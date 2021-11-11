@@ -1,0 +1,19 @@
+.git/*
+*.pyc
+*.DS_Store
+*.yml
+*.pdf
+*.png
+*.pth
+*.pt
+*.pkl
+*.csv
+*.xls
+*.xlsx
+*.sh*
+# folders
+build/
+*.ipynb_checkpoints*
+*.egg-info/*
+.vscode/*
+docs/source/notebooks/*
