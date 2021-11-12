@@ -59,7 +59,7 @@ class LVMapping(gpytorch.Module):
         self.register_parameter(
             name='raw_latents',
             parameter=torch.nn.Parameter(
-                torch.randn(*batch_shape,num_levels,embedding_dim)
+                torch.randn(*batch_shape,num_levels,lv_dim)
             )
         )
         self.register_prior(
