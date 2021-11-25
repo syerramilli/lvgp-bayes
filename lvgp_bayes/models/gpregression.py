@@ -2,12 +2,12 @@ import torch
 import gpytorch
 import math
 from gpytorch.models import ExactGP
-from gpytorch.priors import NormalPrior,LogNormalPrior
+from gpytorch.priors import NormalPrior
 from gpytorch.constraints import GreaterThan,Positive
 from gpytorch.distributions import MultivariateNormal
 from .. import kernels
-from ..priors import LogHalfHorseshoePrior,MollifiedUniformPrior
-from ..utils.transforms import softplus,inv_softplus
+from ..priors.horseshoe import ExpHalfHorseshoePrior
+from ..priors.exp_gamma import ExpGammaPrior
 from typing import List,Tuple,Union
 
 class GPR(ExactGP):
@@ -63,7 +63,7 @@ class GPR(ExactGP):
         if noise is not None:
             self.likelihood.initialize(noise=noise)
         
-        self.likelihood.register_prior('noise_prior',LogHalfHorseshoePrior(0.01,lb_noise),'raw_noise')
+        self.likelihood.register_prior('noise_prior',ExpHalfHorseshoePrior(0.01,lb_noise),'raw_noise')
         if fix_noise:
             self.likelihood.raw_noise.requires_grad_(False)
         
@@ -77,7 +77,7 @@ class GPR(ExactGP):
                     lengthscale_constraint=Positive(transform=torch.exp,inv_transform=torch.log),
                 )
                 correlation_kernel.register_prior(
-                    'lengthscale_prior',MollifiedUniformPrior(math.log(0.01),math.log(10)),'raw_lengthscale'
+                    'lengthscale_prior',ExpGammaPrior(2., 1.),'raw_lengthscale'
                 )
             except:
                 raise RuntimeError(
@@ -90,11 +90,11 @@ class GPR(ExactGP):
 
         self.covar_module = kernels.ScaleKernel(
             base_kernel = correlation_kernel,
-            outputscale_constraint=Positive(transform=softplus,inv_transform=inv_softplus),
+            outputscale_constraint=Positive(transform=torch.exp,inv_transform=torch.log),
         )
         # register priors
         self.covar_module.register_prior(
-            'outputscale_prior',LogNormalPrior(0.,1.),'outputscale'
+            'outputscale_prior',NormalPrior(0.,1.),'raw_outputscale'
         )
     
     def forward(self,x:torch.Tensor)->MultivariateNormal:
