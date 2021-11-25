@@ -2,12 +2,11 @@ import torch
 import math
 import gpytorch
 from gpytorch.constraints import Positive
-from gpytorch.priors import NormalPrior,GammaPrior
+from gpytorch.priors import NormalPrior
 from gpytorch.distributions import MultivariateNormal
 from .gpregression import GPR
 from .. import kernels
-from ..priors import MollifiedUniformPrior
-from ..utils.transforms import softplus,inv_softplus
+from ..priors.exp_gamma import ExpGammaPrior
 from typing import List,Optional
 
 
@@ -70,15 +69,15 @@ class LVMapping(gpytorch.Module):
 
         self.register_parameter(
             'raw_precision',
-            parameter = torch.nn.Parameter(torch.tensor([0.54]))
+            parameter = torch.nn.Parameter(torch.zeros(1))
         )
         self.register_constraint(
             param_name='raw_precision',
-            constraint=gpytorch.constraints.Positive(transform=softplus,inv_transform=inv_softplus)
+            constraint=gpytorch.constraints.Positive(transform=torch.exp,inv_transform=torch.log)
         )
         self.register_prior(
             name='precision_prior',
-            prior=GammaPrior(2.,1.),
+            prior=ExpGammaPrior(2.,1.),
             param_or_closure='raw_precision'
         )
         
@@ -195,7 +194,7 @@ class LVGPR(GPR):
                 lengthscale_constraint=Positive(transform=torch.exp,inv_transform=torch.log)
             )
             quant_kernel.register_prior(
-                'lengthscale_prior',MollifiedUniformPrior(math.log(0.01),math.log(10)),'raw_lengthscale'
+                'lengthscale_prior',ExpGammaPrior(2., 1.),'raw_lengthscale'
             )
             correlation_kernel = qual_kernel*quant_kernel
 
