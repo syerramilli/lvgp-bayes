@@ -5,7 +5,7 @@ from torch.distributions import HalfCauchy,HalfNormal,constraints
 from torch.distributions.utils import broadcast_all
 from numbers import Number
 
-class LogHalfHorseshoePrior(Prior):
+class ExpHalfHorseshoePrior(Prior):
     """Prior for the log-noise variance hyperparameter for GPs. 
 
     This is parameterized by `scale` and `lb`. `lb` is the lower bound on
@@ -16,7 +16,7 @@ class LogHalfHorseshoePrior(Prior):
 
     To change the scale for this prior for :obj:`~..models.GPR` or :obj:`~..models.VariationalGP` to
     say 0.1,
-        >>> model.likelihood.register('noise_prior',LogHalfHorseshoePrior(0.1),'raw_noise')
+        >>> model.likelihood.register('noise_prior',ExpHalfHorseshoePrior(0.1),'raw_noise')
 
     .. note::
         The `log_prob` method is only approximate and unnormalized. There is no closed form
@@ -55,4 +55,4 @@ class LogHalfHorseshoePrior(Prior):
 
     def expand(self,expand_shape, _instance=None):
         batch_shape = torch.Size(expand_shape)
-        return LogHalfHorseshoePrior(self.scale.expand(batch_shape))
+        return ExpHalfHorseshoePrior(self.scale.expand(batch_shape))
