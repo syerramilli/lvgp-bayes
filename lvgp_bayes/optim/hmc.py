@@ -17,7 +17,7 @@ def pyro_model(model:gpytorch.models.ExactGP):
     pyro.sample("obs",output,obs=model.train_targets)
     return model.train_targets
 
-def get_samples(samples,samples_prob=None,num_samples=None, group_by_chain=False):
+def get_samples(samples,num_samples=None, group_by_chain=False):
     """
     Get samples from the MCMC run
 
@@ -32,9 +32,7 @@ def get_samples(samples,samples_prob=None,num_samples=None, group_by_chain=False
         sample_tensor = list(samples.values())[0]
         batch_size, device = sample_tensor.shape[batch_dim], sample_tensor.device
         # idxs = torch.linspace(0,batch_size-1,num_samples,dtype=torch.long,device=device).flip(0)
-        idxs = torch.from_numpy(
-            np.random.choice(batch_size,num_samples,replace=True,p=samples_prob)
-        ).to(device)
+        idxs = torch.randint(0, batch_size, size=(num_samples,), device=device)
         samples = {k: v.index_select(batch_dim, idxs) for k, v in samples.items()}
     return samples
 
@@ -66,18 +64,6 @@ def _single_chain_hmc(
     mcmc.run(model=model)
     return mcmc
 
-def get_posterior_prob(model,samples,idx):
-    tmp_samples = {k: v.index_select(0, torch.tensor(idx)).squeeze(0) for k, v in samples.items()}
-    for name,_,_,setting_closure in model.named_priors():
-        setting_closure(tmp_samples[name])
-    
-    mll = gpytorch.mlls.ExactMarginalLogLikelihood(model.likelihood,model)
-    with torch.no_grad():
-        output = model(*model.train_inputs)
-        out = mll(output,model.train_targets)
-    
-    return out.item()
-
 def run_hmc(
     model:gpytorch.models.ExactGP,
     num_samples:int=500,
@@ -86,7 +72,7 @@ def run_hmc(
     step_size:float=0.1,
     disable_progbar:bool=True,
     num_jobs:int=1,
-    num_chains:int=3):
+    num_chains:int=4):
 
     init_values_list = [{} for _ in range(num_chains)]
     for name,prior,closure,_ in model.named_priors():
@@ -110,11 +96,6 @@ def run_hmc(
         v = torch.stack([samples_list[i][k] for i in range(len(samples_list))])
         samples[k] = v.reshape((-1,) + v.shape[2:])
     
-    samples_prob = np.clip(np.exp([
-        get_posterior_prob(model, samples, i) for i in range(list(samples.values())[0].shape[0])
-    ]),1e-3,np.inf)
-    samples_prob = samples_prob/samples_prob.sum()
-    
-    model.pyro_load_from_samples(get_samples(samples,samples_prob,num_model_samples))
+    model.pyro_load_from_samples(get_samples(samples,num_model_samples))
 
-    return mcmc_chains,samples_prob
+    return mcmc_chains
