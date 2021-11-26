@@ -7,6 +7,7 @@ from gpytorch.distributions import MultivariateNormal
 from .gpregression import GPR
 from .. import kernels
 from ..priors.exp_gamma import ExpGammaPrior
+from ..priors.mollified_uniform import MollifiedUniformPrior
 from typing import List,Optional
 
 
@@ -194,7 +195,7 @@ class LVGPR(GPR):
                 lengthscale_constraint=Positive(transform=torch.exp,inv_transform=torch.log)
             )
             quant_kernel.register_prior(
-                'lengthscale_prior',ExpGammaPrior(2., 1.),'raw_lengthscale'
+                'lengthscale_prior',MollifiedUniformPrior(math.log(0.05), math.log(10)),'raw_lengthscale'
             )
             correlation_kernel = qual_kernel*quant_kernel
 
