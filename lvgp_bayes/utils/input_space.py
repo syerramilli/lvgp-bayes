@@ -195,7 +195,7 @@ class InputSpace(object):
         
         return out
 
-    def latinhypecube_sample(
+    def latinhypercube_sample(
         self,
         rng:Optional[Union[int,np.random.RandomState]]=None,
         size:int=1,
