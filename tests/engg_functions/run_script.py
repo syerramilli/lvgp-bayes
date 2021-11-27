@@ -70,7 +70,8 @@ def main_script(seed):
 
     n_cat = V.shape[0]
     n_train = args.train_factor*n_cat
-    train_x = torch.from_numpy(config.latinhypercube_sample(np.random.RandomState(seed),n_train))
+    rng = np.random.RandomState(seed)
+    train_x = torch.from_numpy(config.latinhypercube_sample(rng,n_train))
     train_y = [None]*n_train
 
     for i,x in enumerate(train_x):
@@ -83,6 +84,7 @@ def main_script(seed):
     torch.save(train_x,os.path.join(save_dir_seed,'train_x.pt'))
     torch.save(train_y,os.path.join(save_dir_seed,'train_y.pt'))
 
+    set_seed(seed)
     model = LVGPR(
         train_x=train_x,
         train_y=train_y,
@@ -94,7 +96,7 @@ def main_script(seed):
     ).double()
 
     start_time = time.time()
-    _ = fit_model_scipy(model,num_restarts=15,options={'ftol':1e-6,'maxiter':1000})
+    _ = fit_model_scipy(model,num_restarts=15,options={'ftol':1e-6})
     fit_time_map = time.time() - start_time
 
     # save MAP state
@@ -118,7 +120,8 @@ def main_script(seed):
     # run mcmc
     model.train()
     start_time = time.time()
-    _ = run_hmc(model)
+    with gpytorch.settings.cholesky_jitter(1e-6):
+        _ = run_hmc(model)
     fit_time_mcmc = time.time()-start_time
     torch.save(model.state_dict(),os.path.join(save_dir_seed,'mcmc_state.pth'))
     
@@ -130,7 +133,7 @@ def main_script(seed):
     stats_mcmc = {
         'rrmse':rrmse(test_y,means.mean(axis=0)).item(),
         'mis':mean_interval_score(test_y,lq,uq,0.05).item(),
-        'cov':coverage(test_y,lq,uq).item(),
+        'coverage':coverage(test_y,lq,uq).item(),
         'training_time':fit_time_map + fit_time_mcmc
     }
     dump(stats_mcmc, os.path.join(save_dir_seed,'stats_mcmc.pkl'))
