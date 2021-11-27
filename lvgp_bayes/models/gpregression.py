@@ -8,6 +8,7 @@ from gpytorch.distributions import MultivariateNormal
 from .. import kernels
 from ..priors.horseshoe import ExpHalfHorseshoePrior
 from ..priors.exp_gamma import ExpGammaPrior
+from ..priors.mollified_uniform import MollifiedUniformPrior
 from typing import List,Tuple,Union
 
 class GPR(ExactGP):
@@ -63,7 +64,7 @@ class GPR(ExactGP):
         if noise is not None:
             self.likelihood.initialize(noise=noise)
         
-        self.likelihood.register_prior('noise_prior',ExpHalfHorseshoePrior(0.01,lb_noise),'raw_noise')
+        self.likelihood.register_prior('noise_prior',ExpHalfHorseshoePrior(0.01),'raw_noise')
         if fix_noise:
             self.likelihood.raw_noise.requires_grad_(False)
         
@@ -77,7 +78,7 @@ class GPR(ExactGP):
                     lengthscale_constraint=Positive(transform=torch.exp,inv_transform=torch.log),
                 )
                 correlation_kernel.register_prior(
-                    'lengthscale_prior',ExpGammaPrior(2., 1.),'raw_lengthscale'
+                    'lengthscale_prior',MollifiedUniformPrior(math.log(0.05), math.log(10)),'raw_lengthscale'
                 )
             except:
                 raise RuntimeError(
@@ -142,11 +143,10 @@ class GPR(ExactGP):
     def reset_parameters(self) -> None:
         """Reset parameters by sampling from prior
         """
-        for _,prior,closure,setting_closure in self.named_priors():
-            if not closure().requires_grad:
+        for _,module,prior,closure,setting_closure in self.named_priors():
+            if not closure(module).requires_grad:
                 continue
-            num_samples = (1,) if len(prior.event_shape) > 0 else closure().shape
-            setting_closure(prior.sample(num_samples))
+            setting_closure(module,prior.expand(closure(module).shape).sample())
     
     def load_samples(self, samples_dict):
         '''

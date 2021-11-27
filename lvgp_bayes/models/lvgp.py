@@ -78,7 +78,7 @@ class LVMapping(gpytorch.Module):
         )
         self.register_prior(
             name='precision_prior',
-            prior=ExpGammaPrior(2.,1.),
+            prior=ExpGammaPrior(2.,2.),
             param_or_closure='raw_precision'
         )
         
@@ -170,7 +170,7 @@ class LVGPR(GPR):
         lv_dim:int=2,
         quant_correlation_class:str='RBFKernel',
         noise:float=1e-4,
-        fix_noise:bool=True,
+        fix_noise:bool=False,
         lb_noise:float=1e-6,
     ) -> None:
 
@@ -239,3 +239,13 @@ class LVGPR(GPR):
         for name, param in self.named_parameters():
             if "lv_mapping" not in name:
                 yield name, param
+    
+    def to_pyro_random_module(self):
+        new_module = super().to_pyro_random_module()
+        # some modules are not registered as Pyro modules
+        new_module.covar_module.base_kernel.kernels[1] = \
+            new_module.covar_module.base_kernel.kernels[1].to_pyro_random_module()
+        for i,layer in enumerate(new_module.lv_mapping_layers):
+            new_module.lv_mapping_layers[i]= layer.to_pyro_random_module()
+
+        return new_module
