@@ -243,8 +243,9 @@ class LVGPR(GPR):
     def to_pyro_random_module(self):
         new_module = super().to_pyro_random_module()
         # some modules are not registered as Pyro modules
-        new_module.covar_module.base_kernel.kernels[1] = \
-            new_module.covar_module.base_kernel.kernels[1].to_pyro_random_module()
+        if isinstance(self.covar_module.base_kernel,gpytorch.kernels.ProductKernel):
+            new_module.covar_module.base_kernel.kernels[1] = \
+                new_module.covar_module.base_kernel.kernels[1].to_pyro_random_module()
         for i,layer in enumerate(new_module.lv_mapping_layers):
             new_module.lv_mapping_layers[i]= layer.to_pyro_random_module()
 
