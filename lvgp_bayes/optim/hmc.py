@@ -12,8 +12,8 @@ from collections import OrderedDict
 from copy import deepcopy
 
 def pyro_model(model:gpytorch.models.ExactGP):
-    model.pyro_sample_from_prior()
-    output = model.likelihood(model(*model.train_inputs))
+    sampled_model = model.pyro_sample_from_prior()
+    output = sampled_model.likelihood(sampled_model(*model.train_inputs))
     pyro.sample("obs",output,obs=model.train_targets)
     return model.train_targets
 
@@ -31,8 +31,7 @@ def get_samples(samples,num_samples=None, group_by_chain=False):
         batch_dim = 0
         sample_tensor = list(samples.values())[0]
         batch_size, device = sample_tensor.shape[batch_dim], sample_tensor.device
-        # idxs = torch.linspace(0,batch_size-1,num_samples,dtype=torch.long,device=device).flip(0)
-        idxs = torch.randint(0, batch_size, size=(num_samples,), device=device)
+        idxs = torch.linspace(0,batch_size-1,num_samples,dtype=torch.long,device=device).flip(0)
         samples = {k: v.index_select(batch_dim, idxs) for k, v in samples.items()}
     return samples
 
@@ -66,22 +65,22 @@ def _single_chain_hmc(
 
 def run_hmc(
     model:gpytorch.models.ExactGP,
-    num_samples:int=500,
-    warmup_steps:int=1000,
+    num_samples:int=1000,
+    warmup_steps:int=500,
     num_model_samples:int=100,
     step_size:float=0.1,
     disable_progbar:bool=True,
     num_jobs:int=1,
-    num_chains:int=4):
+    num_chains:int=1):
 
     init_values_list = [{} for _ in range(num_chains)]
-    for name,prior,closure,_ in model.named_priors():
+    for name,module,prior,closure,_ in model.named_priors():
         # first chain is initialized from the current state (preferably the MAP)
-        init_values_list[0][name] = closure().detach().clone()
+        init_values_list[0][name] = closure(module).detach().clone()
         if num_chains > 1:
             # the remaining chains are initialized from some random sample drawn from the prior
             for i in range(num_chains-1):
-                init_values_list[i+1][name] = prior.expand(closure().shape).sample()
+                init_values_list[i+1][name] = prior.expand(closure(module).shape).sample()
 
     set_loky_pickler('dill')
     mcmc_chains = Parallel(n_jobs=num_jobs,verbose=0)(
