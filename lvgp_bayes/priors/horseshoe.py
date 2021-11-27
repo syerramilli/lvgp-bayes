@@ -30,17 +30,17 @@ class ExpHalfHorseshoePrior(Prior):
     :param lb: lower bound on the original scale. Defaults to 1e-6
     :type lb: float or torch.Tensor, optional
     """
-    arg_constraints = {"scale": constraints.positive,"lb":constraints.positive}
+    arg_constraints = {"scale": constraints.positive}
     support = constraints.real
-    def __init__(self, scale, lb=1e-6,validate_args=None):
-        self.scale,self.lb = broadcast_all(scale,lb)
+    def __init__(self, scale,validate_args=None):
+        self.scale, = broadcast_all(scale)
         if isinstance(scale,Number):
             batch_shape = torch.Size()
         else:
             batch_shape = self.scale.size()
         super().__init__(batch_shape,validate_args=validate_args)
         # transform 
-        self._transform = lambda x: self.lb + torch.exp(x)
+        self._transform = torch.exp
 
     def log_prob(self, X):
         # first term is the density in the original scale
@@ -48,9 +48,8 @@ class ExpHalfHorseshoePrior(Prior):
         return torch.log(torch.log(1+3*(self.scale / self.transform(X)) ** 2))+ X
 
     def rsample(self, sample_shape=torch.Size([])):
-        local_shrinkage = HalfCauchy(1).rsample(self.scale.shape).to(self.lb)
-        param_sample = HalfNormal(local_shrinkage * self.scale).rsample(sample_shape).to(self.lb)
-        param_sample[param_sample<self.lb] = self.lb
+        local_shrinkage = HalfCauchy(1).rsample(self.scale.shape)
+        param_sample = HalfNormal(local_shrinkage * self.scale).rsample(sample_shape)
         return param_sample.log()
 
     def expand(self,expand_shape, _instance=None):
