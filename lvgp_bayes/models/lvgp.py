@@ -2,11 +2,10 @@ import torch
 import math
 import gpytorch
 from gpytorch.constraints import Positive,GreaterThan
-from gpytorch.priors import NormalPrior,UniformPrior
 from gpytorch.distributions import MultivariateNormal
 from .gpregression import GPR
 from .. import kernels
-from ..priors.exp_gamma import ExpGammaPrior,ExpInvGammaPrior
+from ..priors.exp_gamma import ExpGammaPrior
 from ..priors.torch_priors import StudentTPrior
 from typing import List,Optional
 
