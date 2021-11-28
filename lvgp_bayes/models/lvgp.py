@@ -1,13 +1,13 @@
 import torch
 import math
 import gpytorch
-from gpytorch.constraints import Positive
-from gpytorch.priors import NormalPrior
+from gpytorch.constraints import Positive,GreaterThan
+from gpytorch.priors import NormalPrior,UniformPrior
 from gpytorch.distributions import MultivariateNormal
 from .gpregression import GPR
 from .. import kernels
-from ..priors.exp_gamma import ExpGammaPrior
-from ..priors.mollified_uniform import MollifiedUniformPrior
+from ..priors.exp_gamma import ExpGammaPrior,ExpInvGammaPrior
+from ..priors.torch_priors import StudentTPrior
 from typing import List,Optional
 
 
@@ -64,7 +64,7 @@ class LVMapping(gpytorch.Module):
         )
         self.register_prior(
             name='latents_prior',
-            prior=gpytorch.priors.NormalPrior(0.,1.),
+            prior=StudentTPrior(4, 0, 1),
             param_or_closure='raw_latents'
         )
 
@@ -74,17 +74,21 @@ class LVMapping(gpytorch.Module):
         )
         self.register_constraint(
             param_name='raw_precision',
-            constraint=gpytorch.constraints.Positive(transform=torch.exp,inv_transform=torch.log)
+            constraint=Positive(transform=torch.exp,inv_transform=torch.log)
         )
         self.register_prior(
             name='precision_prior',
-            prior=ExpGammaPrior(2.,2.),
+            prior=ExpGammaPrior(2, 1),
             param_or_closure='raw_precision'
         )
         
     @property
     def precision(self):
         return self.raw_precision_constraint.transform(self.raw_precision)
+    
+    @precision.setter
+    def precision(self,v):
+        self._set_precision(v)
     
     def _set_precision(self,value):
         raw_value = (
@@ -107,12 +111,13 @@ class LVMapping(gpytorch.Module):
         :returns: a N x lv_dim tensor
         :rtype: torch.Tensor
         """
-        if self.latents.ndim == 3:
+        latents = self.latents
+        if latents.ndim == 3:
             return torch.stack([
-                torch.nn.functional.embedding(x[i,:],self.latents[i,...]) \
-                    for i in range(self.latents.shape[0])
+                torch.nn.functional.embedding(x[i,:],latents[i,...]) \
+                    for i in range(latents.shape[0])
             ])
-        return torch.nn.functional.embedding(x,self.latents)
+        return torch.nn.functional.embedding(x,latents)
 
 class LVGPR(GPR):
     """The latent variable GP regression model which extends GPs to handle categorical inputs.
@@ -192,10 +197,10 @@ class LVGPR(GPR):
             quant_kernel = quant_correlation_class(
                 ard_num_dims=len(quant_index),
                 active_dims=len(qual_index)*lv_dim+torch.arange(len(quant_index)),
-                lengthscale_constraint=Positive(transform=torch.exp,inv_transform=torch.log)
+                lengthscale_constraint=Positive(transform=torch.exp,inv_transform=torch.log),
             )
             quant_kernel.register_prior(
-                'lengthscale_prior',MollifiedUniformPrior(math.log(0.05), math.log(10)),'raw_lengthscale'
+                'lengthscale_prior',ExpInvGammaPrior(2,2),'raw_lengthscale',
             )
             correlation_kernel = qual_kernel*quant_kernel
 
