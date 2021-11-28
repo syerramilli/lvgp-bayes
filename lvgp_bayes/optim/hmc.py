@@ -1,12 +1,12 @@
-import re
+import warnings
 import torch
 import numpy as np
 import gpytorch
 import pyro
+import gpytorch.settings as gptsettings
+from gpytorch.utils.errors import NanError,NotPSDError
 from pyro.infer.mcmc import MCMC,NUTS
 from pyro.infer.autoguide import init_to_value
-from joblib import Parallel,delayed
-from joblib.externals.loky import set_loky_pickler
 from typing import Optional, Dict, Tuple
 from collections import OrderedDict
 from copy import deepcopy
@@ -70,31 +70,69 @@ def run_hmc(
     num_model_samples:int=100,
     step_size:float=0.1,
     disable_progbar:bool=True,
-    num_jobs:int=1,
-    num_chains:int=1):
+    ):
 
-    init_values_list = [{} for _ in range(num_chains)]
-    for name,module,prior,closure,_ in model.named_priors():
-        # first chain is initialized from the current state (preferably the MAP)
-        init_values_list[0][name] = closure(module).detach().clone()
-        if num_chains > 1:
-            # the remaining chains are initialized from some random sample drawn from the prior
-            for i in range(num_chains-1):
-                init_values_list[i+1][name] = prior.expand(closure(module).shape).sample()
+    # init_values_list = [{} for _ in range(num_chains)]
+    # for name,module,prior,closure,_ in model.named_priors():
+    #     # first chain is initialized from the current state (preferably the MAP)
+    #     init_values_list[0][name] = closure(module).detach().clone()
+    #     if num_chains > 1:
+    #         # the remaining chains are initialized from some random sample drawn from the prior
+    #         for i in range(num_chains-1):
+    #             init_values_list[i+1][name] = prior.expand(closure(module).shape).sample()
 
-    set_loky_pickler('dill')
-    mcmc_chains = Parallel(n_jobs=num_jobs,verbose=0)(
-        delayed(_single_chain_hmc)(
-            model,init_values,num_samples,warmup_steps,step_size,disable_progbar
-        ) for init_values in init_values_list
-    )
-
-    samples_list = [deepcopy(mcmc_chain.get_samples()) for mcmc_chain in mcmc_chains]
-    samples = {}
-    for k in samples_list[0].keys():
-        v = torch.stack([samples_list[i][k] for i in range(len(samples_list))])
-        samples[k] = v.reshape((-1,) + v.shape[2:])
     
+    # set_loky_pickler('dill')
+    # mcmc_chains = Parallel(n_jobs=num_jobs,verbose=0)(
+    #     delayed(_single_chain_hmc)(
+    #         model,init_values,num_samples,warmup_steps,step_size,disable_progbar
+    #     ) for init_values in init_values_list
+    # )
+
+    # samples_list = [deepcopy(mcmc_chain.get_samples()) for mcmc_chain in mcmc_chains]
+    # samples = {}
+    # for k in samples_list[0].keys():
+    #     v = torch.stack([samples_list[i][k] for i in range(len(samples_list))])
+    #     samples[k] = v.reshape((-1,) + v.shape[2:])
+    
+    init_values  = {}
+    for name,module,_,closure,_ in model.named_priors():
+        # chain is initialized from the current state (preferably the MAP)
+        init_values[name] = closure(module).detach().clone()
+    
+    flag = False
+    while True:
+        try:
+            with gptsettings.fast_computations(log_prob=False),gptsettings.cholesky_jitter(1e-4):
+                mcmc_run = _single_chain_hmc(
+                    model=model,
+                    init_values=init_values,
+                    num_samples=num_samples,
+                    warmup_steps=warmup_steps,
+                    step_size=step_size,
+                    disable_progbar=disable_progbar
+                )
+
+            flag = True
+
+        except Exception as e:
+            if isinstance(e,NotPSDError) or isinstance(e, NanError):
+                warnings.warn(
+                    'Chain has reached a point where the model fit is unstable! Restarting MCMC from a new point!',
+                    RuntimeWarning
+                )
+
+                init_values  = {}
+                for name,module,prior,closure,_ in model.named_priors():
+                    # chain is initialized from the current state (preferably the MAP)
+                    init_values[name] = prior.expand(closure(module).shape).sample()
+            else:
+                raise
+        
+        if flag:
+            break
+        
+    samples = deepcopy(mcmc_run.get_samples())
     model.pyro_load_from_samples(get_samples(samples,num_model_samples))
 
-    return mcmc_chains
+    return mcmc_run
