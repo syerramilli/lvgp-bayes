@@ -78,7 +78,7 @@ class GPR(ExactGP):
                     lengthscale_constraint=Positive(transform=torch.exp,inv_transform=torch.log),
                 )
                 correlation_kernel.register_prior(
-                    'lengthscale_prior',MollifiedUniformPrior(math.log(0.05), math.log(10)),'raw_lengthscale'
+                    'lengthscale_prior',MollifiedUniformPrior(math.log(0.1),math.log(10)),'raw_lengthscale'
                 )
             except:
                 raise RuntimeError(
