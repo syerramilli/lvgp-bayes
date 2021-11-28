@@ -2,11 +2,12 @@ import torch
 import math
 import gpytorch
 from gpytorch.constraints import Positive,GreaterThan
+from gpytorch.priors import NormalPrior
 from gpytorch.distributions import MultivariateNormal
 from .gpregression import GPR
 from .. import kernels
 from ..priors.exp_gamma import ExpGammaPrior
-from ..priors.torch_priors import StudentTPrior
+from ..priors.mollified_uniform import MollifiedUniformPrior
 from typing import List,Optional
 
 
@@ -63,7 +64,7 @@ class LVMapping(gpytorch.Module):
         )
         self.register_prior(
             name='latents_prior',
-            prior=StudentTPrior(4, 0, 1),
+            prior=NormalPrior(0., 1.),
             param_or_closure='raw_latents'
         )
 
@@ -199,7 +200,7 @@ class LVGPR(GPR):
                 lengthscale_constraint=Positive(transform=torch.exp,inv_transform=torch.log),
             )
             quant_kernel.register_prior(
-                'lengthscale_prior',ExpInvGammaPrior(2,2),'raw_lengthscale',
+                'lengthscale_prior',MollifiedUniformPrior(math.log(0.1),math.log(10)),'raw_lengthscale',
             )
             correlation_kernel = qual_kernel*quant_kernel
 
