@@ -31,26 +31,44 @@ def get_samples(samples,num_samples=None, group_by_chain=False):
         samples = {k: v.index_select(batch_dim, idxs) for k, v in samples.items()}
     return samples
 
+class MVN(gpytorch.distributions.MultivariateNormal):
+    def __init__(self,base_dist):
+        self.base_dist = base_dist
+    
+    def rsample(self,**kwargs):
+        return self.base_dist.rsample(**kwargs)
+    
+    def log_prob(self,value):
+        try:
+            out= self.base_dist.log_prob(value)
+            return out
+        except Exception as e:
+            raise RuntimeError("singular U")
+    
+    @property
+    def event_shape(self):
+        return self.base_dist.event_shape
+
 def _single_chain_hmc(
     model:gpytorch.models.ExactGP,
     init_values:Dict[str,torch.Tensor],
     num_samples:int=1000,
     warmup_steps:int=1000,
-    step_size:float=0.1,
     disable_progbar:bool=True,
+    max_tree_depth:int=5,
 ) -> Tuple[Dict,float]:
     
     def pyro_model():
         sampled_model = model.pyro_sample_from_prior()
-        output = sampled_model.likelihood(sampled_model(*model.train_inputs))
+        output = MVN(sampled_model.likelihood(sampled_model(*model.train_inputs)))
         pyro.sample("obs",output,obs=model.train_targets)
         return model.train_targets
 
     hmc_kernel = NUTS(
         pyro_model,
-        step_size=step_size,
+        step_size=0.1,
         adapt_step_size=True,
-        max_tree_depth=5,
+        max_tree_depth=max_tree_depth,
         init_strategy=init_to_value(values=init_values)
     )
     mcmc = MCMC(
@@ -70,10 +88,11 @@ def run_hmc(
     num_samples:int=500,
     warmup_steps:int=500,
     num_model_samples:int=100,
-    step_size:float=0.1,
     disable_progbar:bool=True,
     num_chains:int=1,
-    num_jobs:int=1):
+    num_jobs:int=1,
+    max_tree_depth:int=5,
+):
 
     init_values_list = [{} for _ in range(num_chains)]
     for name,module,prior,closure,_ in model.named_priors():
@@ -82,7 +101,7 @@ def run_hmc(
     set_loky_pickler('dill')
     mcmc_runs = Parallel(n_jobs=num_jobs,verbose=0)(
         delayed(_single_chain_hmc)(
-            model,init_values,num_samples,warmup_steps,step_size,disable_progbar
+            model,init_values,num_samples,warmup_steps,disable_progbar,max_tree_depth
         ) for init_values in init_values_list
     )
 
