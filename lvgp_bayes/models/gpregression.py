@@ -64,7 +64,7 @@ class GPR(ExactGP):
         if noise is not None:
             self.likelihood.initialize(noise=noise)
         
-        self.likelihood.register_prior('noise_prior',ExpHalfHorseshoePrior(0.01),'raw_noise')
+        self.likelihood.register_prior('noise_prior',ExpHalfHorseshoePrior(0.01,lb_noise),'raw_noise')
         if fix_noise:
             self.likelihood.raw_noise.requires_grad_(False)
         

@@ -16,7 +16,7 @@ class ExpHalfHorseshoePrior(Prior):
 
     To change the scale for this prior for :obj:`~..models.GPR` or :obj:`~..models.VariationalGP` to
     say 0.1,
-        >>> model.likelihood.register('noise_prior',ExpHalfHorseshoePrior(0.1),'raw_noise')
+        >>> model.likelihood.register('noise_prior',ExpHalfHorseshoePrior(0.1,1e-6),'raw_noise')
 
     .. note::
         The `log_prob` method is only approximate and unnormalized. There is no closed form
@@ -30,17 +30,17 @@ class ExpHalfHorseshoePrior(Prior):
     :param lb: lower bound on the original scale. Defaults to 1e-6
     :type lb: float or torch.Tensor, optional
     """
-    arg_constraints = {"scale": constraints.positive}
+    arg_constraints = {"scale": constraints.positive,"lb":constraints.positive}
     support = constraints.real
-    def __init__(self, scale,validate_args=None):
-        self.scale, = broadcast_all(scale)
+    def __init__(self, scale,lb,validate_args=None):
+        self.scale,self.lb = broadcast_all(scale,lb)
         if isinstance(scale,Number):
             batch_shape = torch.Size()
         else:
             batch_shape = self.scale.size()
         super().__init__(batch_shape,validate_args=validate_args)
         # transform 
-        self._transform = torch.exp
+        self._transform = lambda x: self.lb + torch.exp(x)
 
     def log_prob(self, X):
         # first term is the density in the original scale
@@ -50,8 +50,9 @@ class ExpHalfHorseshoePrior(Prior):
     def rsample(self, sample_shape=torch.Size([])):
         local_shrinkage = HalfCauchy(1).rsample(self.scale.shape)
         param_sample = HalfNormal(local_shrinkage * self.scale).rsample(sample_shape)
-        return param_sample.log()
+        param_sample[param_sample<self.lb] = self.lb + 1e-8
+        return (param_sample-self.lb).log()
 
     def expand(self,expand_shape, _instance=None):
         batch_shape = torch.Size(expand_shape)
-        return ExpHalfHorseshoePrior(self.scale.expand(batch_shape))
+        return ExpHalfHorseshoePrior(self.scale.expand(batch_shape),self.lb.expand(batch_shape))
