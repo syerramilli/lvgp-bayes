@@ -69,7 +69,8 @@ def _single_chain_hmc(
         step_size=0.1,
         adapt_step_size=True,
         max_tree_depth=max_tree_depth,
-        init_strategy=init_to_value(values=init_values)
+        init_strategy=init_to_value(values=init_values),
+        full_mass=True
     )
     mcmc = MCMC(
         kernel=hmc_kernel,
