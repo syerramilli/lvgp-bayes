@@ -9,7 +9,8 @@ from pyro.infer.mcmc import MCMC,NUTS
 from pyro.infer.autoguide import init_to_value
 
 from ..models import GPR,LVGPR
-from ._pyro_models import pyro_lvgp,pyro_gp
+from ..models.orth_lvgp import OrthLVGPR
+from ._pyro_models import pyro_lvgp,pyro_gp,pyro_orth_lvgp
 
 from joblib import Parallel,delayed
 from joblib.externals.loky import set_loky_pickler
@@ -43,6 +44,7 @@ def _single_chain_hmc(
     warmup_steps:int=1000,
     disable_progbar:bool=True,
     max_tree_depth:int=5,
+    jit_compile:bool=True,
 ) -> Tuple[Dict,float]:
     
     kwargs = {
@@ -59,6 +61,16 @@ def _single_chain_hmc(
             'quant_index':model.quant_index,
             'num_levels_per_var':num_levels_per_var
         })
+    elif isinstance(model, OrthLVGPR):
+        pyro_model = pyro_orth_lvgp
+        with torch.no_grad():
+            num_levels_per_var = [layer.raw_weight.shape[-2]+layer.raw_weight.shape[-1] for layer in model.lv_mapping_layers]
+        kwargs.update({
+            'qual_index':model.qual_index,
+            'quant_index':model.quant_index,
+            'num_levels_per_var':num_levels_per_var
+        })
+    
     else:
         pyro_model = pyro_gp
     
@@ -70,7 +82,7 @@ def _single_chain_hmc(
         max_tree_depth=max_tree_depth,
         init_strategy=init_to_value(values=init_values),
         full_mass=False,
-        jit_compile=True,
+        jit_compile=jit_compile,
         ignore_jit_warnings=True
     )
     mcmc = MCMC(
@@ -94,16 +106,18 @@ def run_hmc_jit(
     num_chains:int=1,
     num_jobs:int=1,
     max_tree_depth:int=5,
+    jit_compile:bool=True
 ):
 
     init_values_list = [{} for _ in range(num_chains)]
     for name,module,prior,closure,_ in model.named_priors():
         for i in range(num_chains):
-            init_values_list[i][name] = prior.expand(closure(module).shape).sample()
+            init_values_list[i][name[:-6]] = prior.expand(closure(module).shape).sample()
+
     set_loky_pickler('dill')
     mcmc_runs = Parallel(n_jobs=num_jobs,verbose=0)(
         delayed(_single_chain_hmc)(
-            model,init_values,num_samples,warmup_steps,disable_progbar,max_tree_depth
+            model,init_values,num_samples,warmup_steps,disable_progbar,max_tree_depth,jit_compile
         ) for init_values in init_values_list
     )
 
