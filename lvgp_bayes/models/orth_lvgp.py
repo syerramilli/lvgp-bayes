@@ -4,34 +4,19 @@ import gpytorch
 from gpytorch.constraints import Positive,GreaterThan
 from gpytorch.priors import NormalPrior
 from gpytorch.distributions import MultivariateNormal
+from pyro.distributions.transforms import SoftplusTransform,OrderedTransform,ComposeTransform
 from .gpregression import GPR
 from .. import kernels
 from ..priors.exp_gamma import ExpGammaPrior
 from ..priors.mollified_uniform import MollifiedUniformPrior
-from ..utils.matrix_ops import translate_and_rotate
+from ..priors.eigen_dist import RawEigenvaluesPrior
+from ..utils.orthogonal import construct_orthogonal
 from typing import List,Optional
 
 
-class LVMapping(gpytorch.Module):
-    """Latent variable mapping. 
-    
-    Maps the levels of a qualitative variable onto a latent numerical space. This is implemented 
-    in the form of a lookup table similar to `torch.nn.Embedding`, although the parameterization
-    is somewhat different. The parameterization ensures that the mapping is not invariant to 
-    translation, and rotation. However, it is still invariant to reflection. 
+positive_orderered_transform = ComposeTransform([OrderedTransform(),SoftplusTransform()])
 
-    :note: Binary categorical variables should not be supplied. There is no benefit from applying a 
-        latent variable treatment for such variables. Instead, treat them as numerical inputs.
-
-    :param num_levels: The number of levels for the categorical variable
-    :type num_levels: int
-    
-    :param lv_dim: The dimension of the latent variable space. This needs to be greater than 1
-        and can atmost be `num_levels`-1. 
-    :type lv_dim: int
-
-    :param batch_shape: not currently supported
-    """
+class OrthLVMapping(gpytorch.Module):
     def __init__(
         self,
         num_levels:int,
@@ -55,18 +40,39 @@ class LVMapping(gpytorch.Module):
                 'Setting it to %s in place of %s' %(num_levels-1,lv_dim)
             )
         
-        self.register_buffer('num_levels',torch.tensor(num_levels))
-        self.register_buffer('lv_dim',torch.tensor(lv_dim))
         self.register_parameter(
-            name='raw_latents',
-            parameter=torch.nn.Parameter(
-                torch.randn(*batch_shape,num_levels,lv_dim)
-            )
+            'raw_weight',
+            parameter=torch.nn.Parameter(0.1*torch.randn(num_levels-lv_dim,lv_dim))
         )
         self.register_prior(
-            name='raw_latents_prior',
-            prior=NormalPrior(0., math.sqrt(num_levels)),
-            param_or_closure='raw_latents'
+            'raw_weight_prior',
+            prior=NormalPrior(0.,1.),
+            param_or_closure='raw_weight'
+        )
+
+        self.register_parameter(
+            'raw_skew_vec',
+            parameter=torch.nn.Parameter(0.1*torch.randn(
+                int((lv_dim)*(lv_dim-1)/2)
+            ))
+        )
+        self.register_prior(
+            'raw_skew_prior',
+            prior=NormalPrior(0.,1.),
+            param_or_closure='raw_skew_vec'
+        )
+
+        self.register_parameter(
+            'raw_eigen_values', 
+            parameter=torch.nn.Parameter(
+                torch.randn(*batch_shape,1,lv_dim)
+            )
+        )
+
+        self.register_prior(
+            'raw_eigen_values_prior',
+            prior=RawEigenvaluesPrior(num_levels, lv_dim),
+            param_or_closure='raw_eigen_values'
         )
 
         self.register_parameter(
@@ -78,7 +84,7 @@ class LVMapping(gpytorch.Module):
             constraint=Positive(transform=torch.exp,inv_transform=torch.log)
         )
         self.register_prior(
-            name='raw_precision_prior',
+            name='precision_prior',
             prior=ExpGammaPrior(2, 1),
             param_or_closure='raw_precision'
         )
@@ -102,10 +108,8 @@ class LVMapping(gpytorch.Module):
     @property
     def latents(self):
         batch_size = torch.Size([]) if self.raw_precision.ndim == 1 else torch.Size([self.raw_precision.numel()])
-        out = 1/self.precision.view(*batch_size,1,1).sqrt()*self.raw_latents/self.sqrt_factor
-        if self.lv_dim == 2:
-            return translate_and_rotate(out)
-        return out
+        return 1/self.precision.view(*batch_size,1,1).sqrt()/self.sqrt_factor*construct_orthogonal(
+            self.raw_skew_vec,self.raw_weight)*positive_orderered_transform(self.raw_eigen_values)
         
     def forward(self,x:torch.LongTensor)->torch.Tensor:
         """Map the levels of the qualitative factor onto the latent variable space.
@@ -124,7 +128,7 @@ class LVMapping(gpytorch.Module):
             ])
         return torch.nn.functional.embedding(x,latents)
 
-class LVGPR(GPR):
+class OrthLVGPR(GPR):
     """The latent variable GP regression model which extends GPs to handle categorical inputs.
 
     This is based on the work of `Zhang et al. (2019)`_. LVGPR first projects each categorical input 
@@ -209,7 +213,7 @@ class LVGPR(GPR):
             )
             correlation_kernel = qual_kernel*quant_kernel
 
-        super(LVGPR,self).__init__(
+        super().__init__(
             train_x=train_x,train_y=train_y,
             correlation_kernel=correlation_kernel,
             noise=noise,fix_noise=fix_noise,lb_noise=lb_noise
@@ -221,7 +225,7 @@ class LVGPR(GPR):
 
         # latent variable mapping
         self.lv_mapping_layers = torch.nn.ModuleList([
-            LVMapping(num_levels,lv_dim) \
+            OrthLVMapping(num_levels,lv_dim) \
                 for k,num_levels in enumerate(num_levels_per_var)
         ])
     

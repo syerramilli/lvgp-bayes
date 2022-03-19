@@ -64,7 +64,7 @@ class GPR(ExactGP):
         if noise is not None:
             self.likelihood.initialize(noise=noise)
         
-        self.likelihood.register_prior('noise_prior',ExpHalfHorseshoePrior(0.01,lb_noise),'raw_noise')
+        self.likelihood.register_prior('raw_noise_prior',ExpHalfHorseshoePrior(0.01,lb_noise),'raw_noise')
         if fix_noise:
             self.likelihood.raw_noise.requires_grad_(False)
         
@@ -78,7 +78,7 @@ class GPR(ExactGP):
                     lengthscale_constraint=Positive(transform=torch.exp,inv_transform=torch.log),
                 )
                 correlation_kernel.register_prior(
-                    'lengthscale_prior',MollifiedUniformPrior(math.log(0.1),math.log(10)),'raw_lengthscale'
+                    'raw_lengthscale_prior',MollifiedUniformPrior(math.log(0.1),math.log(10)),'raw_lengthscale'
                 )
             except:
                 raise RuntimeError(
@@ -95,7 +95,7 @@ class GPR(ExactGP):
         )
         # register priors
         self.covar_module.register_prior(
-            'outputscale_prior',NormalPrior(0.,1.),'raw_outputscale'
+            'raw_outputscale_prior',NormalPrior(0.,1.),'raw_outputscale'
         )
     
     def forward(self,x:torch.Tensor)->MultivariateNormal:
