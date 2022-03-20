@@ -143,8 +143,7 @@ def pyro_orth_lvgp(x,y,qual_index,quant_index,num_levels_per_var,jitter):
     
     raw_precisions = [
         pyro.sample('lv_mapping_layers.%d.raw_precision'%i,
-                    #ExpGammaPrior(2,1).expand([1])
-                    dist.Uniform(-0.1, 0.1).expand([1])
+                    ExpGammaPrior(2,1).expand([1])
                    )\
         for i in range(num_qual)
     ]
