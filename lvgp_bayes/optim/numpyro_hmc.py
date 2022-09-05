@@ -14,6 +14,7 @@ from numpyro.infer import (
     MCMC,
     NUTS,
     init_to_sample,
+    init_to_value
 )
 
 from lvgp_bayes.models import GPR,LVGPR
@@ -100,6 +101,7 @@ def run_hmc_numpyro(
     num_chains:int=1,
     num_jobs:int=1,
     max_tree_depth:int=5,
+    initialize_from_state:bool=True,
     seed=0,
 ):
     kwargs = {
@@ -147,13 +149,21 @@ def run_hmc_numpyro(
             'jitter':model.likelihood.noise_covar.raw_noise_constraint.lower_bound.item(),
             'kernel':model.covar_module.base_kernel.__class__.__name__.lower()
         })
+
+    if initialize_from_state:
+        init_values = {}
+        for name,module,_,closure,_ in model.named_priors():
+            init_values[name[:-6]] = jnp.array(closure(module).detach().clone().numpy())
+        init_strategy = init_to_value(values=init_values)
+    else:
+        init_strategy = init_to_sample
     
     rng_key, rng_key_predict = random.split(random.PRNGKey(seed))
     kernel = NUTS(
         numpyro_model,
         step_size=0.1,
         adapt_step_size=True,
-        init_strategy=init_to_sample,
+        init_strategy=init_strategy,
         max_tree_depth=max_tree_depth,
         dense_mass=dense_mass
     )
