@@ -121,8 +121,10 @@ def main_script(seed):
     model.train()
     start_time = time.time()
     with gpytorch.settings.cholesky_jitter(1e-6):
-        _ = run_hmc(model)
+        mcmc_runs = run_hmc(model)
     fit_time_mcmc = time.time()-start_time
+    # save state and diagnostics
+    torch.save(mcmc_runs[0].diagnostics(),os.path.join(save_dir_seed,'mcmc_diagnostics.pth'))
     torch.save(model.state_dict(),os.path.join(save_dir_seed,'mcmc_state.pth'))
     
     # predictions
@@ -134,7 +136,7 @@ def main_script(seed):
         'rrmse':rrmse(test_y,means.mean(axis=0)).item(),
         'mis':mean_interval_score(test_y,lq,uq,0.05).item(),
         'coverage':coverage(test_y,lq,uq).item(),
-        'training_time':fit_time_map + fit_time_mcmc
+        'training_time':fit_time_mcmc
     }
     dump(stats_mcmc, os.path.join(save_dir_seed,'stats_mcmc.pkl'))
 
