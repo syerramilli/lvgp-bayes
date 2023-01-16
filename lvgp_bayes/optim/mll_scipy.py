@@ -1,12 +1,21 @@
 import torch
 import numpy as np
-from gpytorch.mlls import ExactMarginalLogLikelihood
 from gpytorch import settings as gptsettings
 from scipy.optimize import minimize,OptimizeResult
 from collections import OrderedDict
 from functools import reduce
 from typing import Dict,List,Tuple,Optional,Union
 from copy import deepcopy
+
+def marginal_log_likelihood(model,add_prior:bool):
+    output = model(*model.train_inputs)
+    out = model.likelihood(output).log_prob(model.train_targets)
+    if add_prior:
+        # add priors
+        for _, module, prior, closure, _ in model.named_priors():
+            out.add_(prior.log_prob(closure(module)).sum())
+
+    return out
 
 class MLLObjective:
     """Helper class that wraps MLE/MAP objective function to be called by scipy.optimize.
@@ -15,14 +24,16 @@ class MLLObjective:
         optimized.
     :type model: models.GPR
     """
-    def __init__(self,model):
-        self.mll = ExactMarginalLogLikelihood(model.likelihood,model)
+    def __init__(self,model,add_prior=True):
+        self.model = model
+        self.add_prior = add_prior
 
         parameters = OrderedDict([
-            (n,p) for n,p in self.mll.model.named_parameters() if p.requires_grad
+            (n,p) for n,p in self.model.named_parameters() if p.requires_grad
         ])
         self.param_shapes = OrderedDict()
-        for n,p in self.mll.model.named_parameters():
+        
+        for n,p in self.model.named_parameters():
             if p.requires_grad:
                 if len(parameters[n].size()) > 0:
                     self.param_shapes[n] = parameters[n].size()
@@ -36,7 +47,7 @@ class MLLObjective:
         :rtype: np.ndarray
         """
         parameters = OrderedDict([
-            (n,p) for n,p in self.mll.model.named_parameters() if p.requires_grad
+            (n,p) for n,p in self.model.named_parameters() if p.requires_grad
         ])
         
         return np.concatenate([parameters[n].data.numpy().ravel() for n in parameters])
@@ -68,7 +79,7 @@ class MLLObjective:
         """Concatenate gradients from the parameters to 1D numpy array
         """
         grads = []
-        for name,p in self.mll.model.named_parameters():
+        for name,p in self.model.named_parameters():
             if p.requires_grad:
                 grad = p.grad.data.numpy()
                 grads.append(grad.ravel())
@@ -94,15 +105,13 @@ class MLLObjective:
         """
         # unpack x and load into module 
         state_dict = self.unpack_parameters(x)
-        old_dict = self.mll.model.state_dict()
+        old_dict = self.model.state_dict()
         old_dict.update(state_dict)
-        self.mll.model.load_state_dict(old_dict)
+        self.model.load_state_dict(old_dict)
         
         # zero the gradient
-        self.mll.zero_grad()
-        # use it to calculate the objective
-        output = self.mll.model(*self.mll.model.train_inputs)
-        obj = -self.mll(output,self.mll.model.train_targets) # negative sign to minimize
+        self.model.zero_grad()
+        obj = -marginal_log_likelihood(self.model, self.add_prior) # negative sign to minimize
         
         if return_grad:
             # backprop the objective
@@ -114,6 +123,7 @@ class MLLObjective:
 
 def fit_model_scipy(
     model,
+    add_prior:bool=True,
     num_restarts:int=5,
     jac:bool=True,
     theta0_list:Optional[List]=None, 
@@ -144,8 +154,8 @@ def fit_model_scipy(
     
     :rtype: Tuple[List[OptimizeResult],float]
     """
-    likobj = MLLObjective(model)
-    current_state_dict = deepcopy(likobj.mll.model.state_dict())
+    likobj = MLLObjective(model,add_prior)
+    current_state_dict = deepcopy(likobj.model.state_dict())
 
     f_inc = np.inf
     # Output - Contains either optimize result objects or exceptions
@@ -174,13 +184,13 @@ def fit_model_scipy(
             
             if res.fun < f_inc:
                 optimal_state = likobj.unpack_parameters(res.x)
-                current_state_dict = deepcopy(likobj.mll.model.state_dict())
+                current_state_dict = deepcopy(likobj.model.state_dict())
                 current_state_dict.update(optimal_state)
                 f_inc = res.fun
         except Exception as e:
             out.append(e)
         
-        likobj.mll.model.load_state_dict(current_state_dict)
+        likobj.model.load_state_dict(current_state_dict)
         if i < num_restarts:
             # reset parameters
             if theta0_list is None:
