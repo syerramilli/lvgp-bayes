@@ -15,6 +15,10 @@ def marginal_log_likelihood(model,add_prior:bool):
         for _, module, prior, closure, _ in model.named_priors():
             out.add_(prior.log_prob(closure(module)).sum())
 
+    # loss terms
+    for added_loss_term in model.added_loss_terms():
+        out.add_(added_loss_term.loss().sum())
+        
     return out
 
 class MLLObjective:
