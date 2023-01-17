@@ -135,11 +135,19 @@ def run_hmc_numpyro(
         with torch.no_grad():
             num_levels_per_var = [layer.raw_latents.shape[0] for layer in model.lv_mapping_layers]
         
+        # alpha and beta aren't expected to change
+        # this is only for testing different values of alpha and beta
+        alpha = model.lv_mapping_layers[0].raw_precision_prior.base_dist.concentration.item()
+        beta = model.lv_mapping_layers[0].raw_precision_prior.base_dist.rate.item()
+
+        # additional kwargs
         kwargs.update({
             'qual_index':model.qual_index.tolist(),
             'quant_index':model.quant_index.tolist(),
             'num_levels_per_var':num_levels_per_var,
-            'jitter':model.likelihood.noise_covar.raw_noise_constraint.lower_bound.item()
+            'jitter':model.likelihood.noise_covar.raw_noise_constraint.lower_bound.item(),
+            'alpha':alpha,
+            'beta':beta
         })
 
     else:
@@ -244,7 +252,7 @@ def numpyro_gpr(
 
 ## LVGP model
 def numpyro_lvgp(
-    x,y,qual_index,quant_index,num_levels_per_var,jitter=1e-6
+    x,y,qual_index,quant_index,num_levels_per_var,jitter=1e-6,alpha=2.,beta=1.
 ):
     mean = numpyro.sample('mean_module.constant',dist.Normal(0,1).expand([1]))
     outputscale = numpyro.sample("covar_module.raw_outputscale", dist.Normal(0.0, 1))
@@ -259,7 +267,7 @@ def numpyro_lvgp(
         numpyro.sample(
             'lv_mapping_layers.%d.raw_precision'%i,
             dist.TransformedDistribution(
-                dist.Gamma(2.,1.), 
+                dist.Gamma(alpha,beta), 
                 dist.transforms.ExpTransform().inv
             ).expand([1])
         ) for i in range(num_qual)
