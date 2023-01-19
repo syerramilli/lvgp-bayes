@@ -7,10 +7,8 @@ import numpy as np
 import pandas as pd
 from joblib import dump,Parallel,delayed,load
 
-import gpytorch
 from lvgp_bayes.models import GPR,LVGPR
 from lvgp_bayes.optim import fit_model_scipy, run_hmc_numpyro
-from lvgp_bayes.priors import ExpHalfHorseshoePrior
 from lvgp_bayes.utils.variables import CategoricalVariable
 from lvgp_bayes.utils.input_space import InputSpace
 from lvgp_bayes.utils.metrics import rrmse,mean_interval_score,coverage
