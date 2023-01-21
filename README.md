@@ -1,6 +1,6 @@
-# LVGP and other non-standard domain GPs in PyTorch
+# Latent variable Gaussian process models with fully Bayesian inference.
 
-`lvgp-pytorch` is an implementation of Latent variable Gaussian process and other non-standard domain Gaussian processes in PyTorch. It is built on top of [GPyTorch](https://github.com/cornellius-gp/gpytorch). 
+LVGP-Bayes is a Python library for estimating Latent variable Gaussian process (LVGP) models through fully Bayesian inference. This respository contains code to run the experiments in the paper [Fully Bayesian inference for latent variable Gaussian process models](https://arxiv.org/abs/2211.02218). 
 
 ## Installation
 
@@ -13,21 +13,20 @@ pip install <path>
 
 **Requirements**:
 - python >= 3.7
-- torch == 1.7
-- gpytorch == 1.2.1
-- numpy == 1.20
-- scipy == 1.6 (for `scipy.optimize`)
+- torch == 1.10.
+- gpytorch == 1.6.0
+- numpy >= 1.21
+- scipy >= 1.6
+- jax == 0.3.15
+- numpyro == 0.10
 
-*Note*: Make sure to install the `1.2.1` version of gpytorch. There are some incompatibilities with version `1.3.1` version.
+## Citing
 
-## Major model classes
-
-- Exact GP models (regression)
-    - `GPR`: the base GP regression model
-    - `LVGPR`: the latent variable GP regression model for domains with qualitative variables
-
-GPU functionality is yet to be tested. However, we expect no hassles with training the models on GPUs.
-
-## Examples
-
-<TODO>
+```
+@article{yerramilli2022fully,
+  title={Fully Bayesian inference for latent variable Gaussian process models},
+  author={Yerramilli, Suraj and Iyer, Akshay and Chen, Wei and Apley, Daniel W},
+  journal={arXiv preprint arXiv:2211.02218},
+  year={2022}
+}
+```

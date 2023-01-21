@@ -17,7 +17,7 @@ setup(name='lvgp-bayes',
       packages=find_packages(exclude=["*.tests", "*.tests.*", "tests.*", "tests","notebooks"]),
       install_requires=requirements,
       extras_requires={
-          "docs":['sphinx','sphinx-rtd-theme','nbsphinx'],
+          #"docs":['sphinx','sphinx-rtd-theme','nbsphinx'],
           "notebooks":['ipython','jupyter','matplotlib']
       },
       zip_safe=False)
