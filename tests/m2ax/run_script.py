@@ -19,9 +19,6 @@ import jax
 from numpyro.diagnostics import summary
 jax.config.update("jax_enable_x64", True)
 
-from copy import deepcopy
-from typing import Dict
-
 parser = argparse.ArgumentParser('M2AX MAP vs fully Bayesian')
 parser.add_argument('--save_dir',type=str,required=True)
 parser.add_argument('--model',type=str,required=True,choices=['gp','lvgp'])
