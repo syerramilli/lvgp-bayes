@@ -17,6 +17,8 @@ from numpyro.infer import (
     init_to_value
 )
 
+from .numpryo_dists import MollifiedUniform
+
 from lvgp_bayes.models import GPR,LVGPR
 from lvgp_bayes.models.sparselvgp import SparseLVGPR,theta_to_weights
 
@@ -166,7 +168,6 @@ def run_hmc_numpyro(
     else:
         init_strategy = init_to_sample
     
-    rng_key, rng_key_predict = random.split(random.PRNGKey(seed))
     kernel = NUTS(
         numpyro_model,
         step_size=0.1,
@@ -184,7 +185,7 @@ def run_hmc_numpyro(
         chain_method='sequential',
         #jit_model_args=True
     )
-    mcmc_runs.run(rng_key,**kwargs)
+    mcmc_runs.run(random.PRNGKey(seed),**kwargs)
     samples = {
         k:torch.from_numpy(np.array(v)).to(model.train_targets) for k,v in mcmc_runs.get_samples().items()
     }
@@ -297,8 +298,8 @@ def numpyro_lvgp(
     if len(quant_index) > 0:
         lengthscale = numpyro.sample(
             'covar_module.base_kernel.kernels.1.raw_lengthscale',
-            #MollifiedUniform(math.log(0.1),math.log(10)).expand([1,len(quant_index)])
-            dist.Uniform(math.log(0.1),math.log(10)).expand([1,len(quant_index)])
+            MollifiedUniform(math.log(0.1),math.log(10)).expand([1,len(quant_index)])
+            #dist.Uniform(math.log(0.1),math.log(10)).expand([1,len(quant_index)])
         )
 
         x2_quant = x[:,quant_index]/jnp.exp(lengthscale)
