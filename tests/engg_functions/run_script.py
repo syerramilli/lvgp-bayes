@@ -10,13 +10,16 @@ import gpytorch
 import configs
 import functions
 
-from lvgp_bayes.models import GPR,LVGPR
-from lvgp_bayes.optim import run_hmc,fit_model_scipy
+from lvgp_bayes.models import LVGPR
+from lvgp_bayes.optim import run_hmc_numpyro,fit_model_scipy
 
-from lvgp_bayes.utils.variables import CategoricalVariable
-from lvgp_bayes.utils.input_space import InputSpace
 from lvgp_bayes.utils.metrics import rrmse,mean_interval_score,coverage
 from lvgp_bayes.utils.metrics import gaussian_mean_confidence_interval
+
+# for MCMC
+import jax
+from numpyro.diagnostics import summary
+jax.config.update("jax_enable_x64", True)
 
 from copy import deepcopy
 from typing import Dict
@@ -24,6 +27,7 @@ from typing import Dict
 parser = argparse.ArgumentParser('Engg functions MAP vs fully Bayesian')
 parser.add_argument('--save_dir',type=str,required=True)
 parser.add_argument('--which_func',type=str,required=True)
+parser.add_argument('--estimation',type=str,required=True)
 parser.add_argument('--train_factor',type=int,required=True)
 parser.add_argument('--n_jobs',type=int,required=True)
 parser.add_argument('--n_repeats',type=int,default=25)
@@ -95,50 +99,65 @@ def main_script(seed):
         lv_dim=2,
     ).double()
 
-    start_time = time.time()
-    _ = fit_model_scipy(model,num_restarts=15,options={'ftol':1e-6})
-    fit_time_map = time.time() - start_time
+    if args.estimation == 'mle':
+        # fix precision hyperparameters to 1 and disable gradients
+        for layer in model.lv_mapping_layers:
+            layer.raw_precision.requires_grad_(False)
+            layer.initialize(**{'precision':torch.ones(1).double()})
 
-    # save MAP state
-    torch.save(model.state_dict(),os.path.join(save_dir_seed,'map_state.pth'))
+    if args.estimation in ['mle','map']:
+        start_time = time.time()
+        _ = fit_model_scipy(
+            model,
+            add_prior= True if args.estimation == 'map' else False,
+            num_restarts=15,options={'ftol':1e-6,'maxfun':1000}
+        )
+        fit_time = time.time() - start_time
 
-    # generate predictions
-    with torch.no_grad():
-        # set return_std = False if standard deviation is not needed 
-        test_pred0,test_pred_std0 = model.predict(test_x,return_std=True)
+        # generate predictions
+        with torch.no_grad():
+            # set return_std = False if standard deviation is not needed 
+            test_pred0,test_pred_std0 = model.predict(test_x,return_std=True)
 
-    # print RRMSE
-    lq,uq = test_pred0-1.96*test_pred_std0,test_pred0+1.96*test_pred_std0
-    stats_map = {
-        'rrmse':rrmse(test_y,test_pred0).item(),
-        'mis':mean_interval_score(test_y,lq,uq,0.05).item(),
-        'coverage':coverage(test_y,lq,uq).item(),
-        'training_time':fit_time_map
-    }
-    dump(stats_map, os.path.join(save_dir_seed,'stats_map.pkl'))
+        # print RRMSE
+        lq,uq = test_pred0-1.96*test_pred_std0,test_pred0+1.96*test_pred_std0
+        stats = {
+            'rrmse':rrmse(test_y,test_pred0).item(),
+            'mis':mean_interval_score(test_y,lq,uq,0.05).item(),
+            'coverage':coverage(test_y,lq,uq).item(),
+            'training_time':fit_time
+        }
+    else:
+        start_time = time.time()
+        mcmc_runs = run_hmc_numpyro(
+            model,
+            num_samples=1500,warmup_steps=1500,
+            max_tree_depth=7,
+            disable_progbar=True,
+            num_chains=1,
+            num_model_samples=100,
+            seed=seed
+        )
+        fit_time = time.time()-start_time
+
+        diagnostics = summary(mcmc_runs.get_samples(),group_by_chain=False)
+        dump(diagnostics,os.path.join(save_dir_seed,'mcmc_diagnostics.pkl'))
+
+        # predictions
+        with torch.no_grad():
+            means,stds = model.predict(test_x,return_std=True)
+        
+        lq,uq = gaussian_mean_confidence_interval(means,stds)
+        stats = {
+            'rrmse':rrmse(test_y,means.mean(axis=0)).item(),
+            'mis':mean_interval_score(test_y,lq,uq,0.05).item(),
+            'coverage':coverage(test_y,lq,uq).item(),
+            'training_time':fit_time
+        }
     
-    # run mcmc
-    model.train()
-    start_time = time.time()
-    with gpytorch.settings.cholesky_jitter(1e-6):
-        mcmc_runs = run_hmc(model)
-    fit_time_mcmc = time.time()-start_time
-    # save state and diagnostics
-    torch.save(mcmc_runs[0].diagnostics(),os.path.join(save_dir_seed,'mcmc_diagnostics.pth'))
-    torch.save(model.state_dict(),os.path.join(save_dir_seed,'mcmc_state.pth'))
-    
-    # predictions
-    with torch.no_grad():
-        means,stds = model.predict(test_x,return_std=True)
-    
-    lq,uq = gaussian_mean_confidence_interval(means,stds)
-    stats_mcmc = {
-        'rrmse':rrmse(test_y,means.mean(axis=0)).item(),
-        'mis':mean_interval_score(test_y,lq,uq,0.05).item(),
-        'coverage':coverage(test_y,lq,uq).item(),
-        'training_time':fit_time_mcmc
-    }
-    dump(stats_mcmc, os.path.join(save_dir_seed,'stats_mcmc.pkl'))
+    # save state and stats
+    torch.save(model.state_dict(),os.path.join(save_dir_seed,'%s_state.pth'%(args.estimation,)))
+    dump(stats, os.path.join(save_dir_seed,'stats_%s.pkl'%(args.estimation,)))
 
 #%%
 seeds = np.linspace(100,1000,args.n_repeats).astype(int)
