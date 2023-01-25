@@ -128,6 +128,7 @@ def main_script(seed):
             'training_time':fit_time
         }
     else:
+        jax.config.update("jax_enable_x64", True) 
         start_time = time.time()
         mcmc_runs = run_hmc_numpyro(
             model,

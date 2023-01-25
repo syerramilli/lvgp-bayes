@@ -18,7 +18,6 @@ from lvgp_bayes.utils.metrics import gaussian_mean_confidence_interval
 # for MCMC
 import jax
 from numpyro.diagnostics import summary
-jax.config.update("jax_enable_x64", True)
 
 parser = argparse.ArgumentParser('Spinels MAP vs fully Bayesian')
 parser.add_argument('--save_dir',type=str,required=True)
@@ -121,6 +120,7 @@ def main_script(seed):
             'training_time':fit_time
         }
     else:
+        jax.config.update("jax_enable_x64", True)
         start_time = time.time()
         mcmc_runs = run_hmc_numpyro(
             model,

@@ -17,7 +17,6 @@ from lvgp_bayes.utils.metrics import gaussian_mean_confidence_interval
 # for MCMC
 import jax
 from numpyro.diagnostics import summary
-jax.config.update("jax_enable_x64", True)
 
 parser = argparse.ArgumentParser('M2AX MAP vs fully Bayesian')
 parser.add_argument('--save_dir',type=str,required=True)
@@ -90,6 +89,7 @@ def set_seed(seed:int):
 
 
 def main_script(seed):
+    jax.config.update("jax_enable_x64", True)
     save_dir_seed = os.path.join(save_dir,'seed_%d'%seed)
     if not os.path.exists(save_dir_seed):
         os.makedirs(save_dir_seed)
