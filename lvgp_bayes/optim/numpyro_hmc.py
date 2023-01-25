@@ -103,8 +103,8 @@ def run_hmc_numpyro(
     num_chains:int=1,
     num_jobs:int=1,
     max_tree_depth:int=5,
-    initialize_from_state:bool=True,
-    seed=0,
+    initialize_from_state:bool=False,
+    seed:int=0
 ):
     kwargs = {
         'x':jnp.array(model.train_inputs[0].numpy()),
@@ -233,8 +233,7 @@ def numpyro_gpr(
     num_inputs = x.shape[1]
     lengthscale = numpyro.sample(
         'covar_module.base_kernel.raw_lengthscale',
-        #MollifiedUniform(math.log(0.1),math.log(10)).expand([1,len(quant_index)])
-        dist.Uniform(math.log(0.1),math.log(10)).expand([1,num_inputs])
+        MollifiedUniform(math.log(0.1),math.log(10)).expand([1,len(quant_index)])
     )
 
     x2 = x/jnp.exp(lengthscale)
@@ -299,7 +298,6 @@ def numpyro_lvgp(
         lengthscale = numpyro.sample(
             'covar_module.base_kernel.kernels.1.raw_lengthscale',
             MollifiedUniform(math.log(0.1),math.log(10)).expand([1,len(quant_index)])
-            #dist.Uniform(math.log(0.1),math.log(10)).expand([1,len(quant_index)])
         )
 
         x2_quant = x[:,quant_index]/jnp.exp(lengthscale)
@@ -368,8 +366,7 @@ def numpyro_fitc_lvgp(
     if len(quant_index) > 0:
         lengthscale = numpyro.sample(
             'covar_module.base_kernel.kernels.1.raw_lengthscale',
-            #MollifiedUniform(math.log(0.1),math.log(10)).expand([1,len(quant_index)])
-            dist.Uniform(math.log(0.1),math.log(10)).expand([1,len(quant_index)])
+            MollifiedUniform(math.log(0.1),math.log(10)).expand([1,len(quant_index)])
         )
 
         x2_quant = x[:,quant_index]/jnp.exp(lengthscale)
