@@ -42,7 +42,7 @@ class LatentEmbeddingsObj(MultiStartOptimizer):
             .repeat(self.corr.shape[0],1,1)
         )
         diff = (corr_emb-self.corr).triu(1)
-        loss = 0.5*(diff**2).mean()
+        loss = (0.5*(diff**2).mean()).log()
         grad=torch.autograd.grad(loss,X)[0].contiguous().view(-1).numpy()
         
         return loss.item(),grad
