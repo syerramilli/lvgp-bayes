@@ -2,6 +2,10 @@
 
 LVGP-Bayes is a Python library for estimating Latent variable Gaussian process (LVGP) models through fully Bayesian inference. This respository contains code to run the experiments in the paper [Fully Bayesian inference for latent variable Gaussian process models](https://arxiv.org/abs/2211.02218). 
 
+For reproducing the experiments, refer to the each subdirectory in the `tests/` folder.
+
+**Note:** The code is under an Academic and Non-Commerical Research use license.
+
 ## Installation
 
 ```
