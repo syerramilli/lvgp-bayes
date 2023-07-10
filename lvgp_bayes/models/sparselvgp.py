@@ -68,7 +68,7 @@ class SparseLVGPR(gpytorch.Module):
         self.register_prior('raw_noise_prior', ExpHalfHorseshoePrior(1e-2, 1e-6), 'raw_noise')
 
         # mean module
-        self.mean_module = gpytorch.means.ConstantMean(prior=NormalPrior(0.,1.))
+        self.mean_module = gpytorch.means.ConstantMean(constant_prior=NormalPrior(0.,1.))
 
         # correlation kernel
         qual_kernel = kernels.RBFKernel(
@@ -177,7 +177,7 @@ class SparseLVGPR(gpytorch.Module):
         Kuu.view(-1)[::M+1] += 1e-6 # adding a small jitter term for stability
         Luu = torch.linalg.cholesky(Kuu)
         Kuf = self.covar_module(Xu,x).evaluate()
-        W = torch.triangular_solve(Kuf, Luu,upper=False)[0].transpose(-2,-1)
+        W = torch.linalg.solve_triangular(Luu, Kuf,upper=False).transpose(-2,-1)
         Kffdiag = self.covar_module(x,diag=True)
         Qffdiag = W.pow(2).sum(dim=-1)
 
@@ -239,7 +239,7 @@ class SparseLVGPR(gpytorch.Module):
 
             Kuf = self.covar_module(Xu,X).evaluate()
 
-            W = torch.triangular_solve(Kuf, Luu,upper=False)[0]
+            W = torch.linalg.solve_triangular(Luu,Kuf, upper=False)
 
             Qffdiag = W.pow(2).sum(dim=-2)
             if self.approx == 'FITC':
@@ -260,9 +260,9 @@ class SparseLVGPR(gpytorch.Module):
             ####### end caching part #######
 
             Kus = self.covar_module(Xu,Xnew).evaluate()
-            Ws = torch.triangular_solve(Kus, Luu,upper=False)[0]
+            Ws = torch.linalg.solve_triangular(Luu,Kus,upper=False)
             pack = torch.cat((W_Dinv_y, Ws), dim=-1)
-            Linv_pack = torch.triangular_solve(pack, L,upper=False)[0]
+            Linv_pack = torch.linalg.solve_triangular(L,pack,upper=False)
             # unpack
             Linv_W_Dinv_y = Linv_pack[...,: W_Dinv_y.shape[-1]]
             Linv_Ws = Linv_pack[..., W_Dinv_y.shape[-1] :]

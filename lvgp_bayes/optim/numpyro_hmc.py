@@ -223,7 +223,7 @@ def run_hmc_numpyro(
 def numpyro_gpr(
     x,y,kernel='rbfkernel',jitter=1e-6
 ):
-    mean = numpyro.sample('mean_module.constant',dist.Normal(0,1).expand([1]))
+    mean = numpyro.sample('mean_module.raw_constant',dist.Normal(0,1))
     outputscale = numpyro.sample("covar_module.raw_outputscale", dist.Normal(0.0, 1))
     noise = numpyro.sample(
         "likelihood.noise_covar.raw_noise",
@@ -254,7 +254,7 @@ def numpyro_gpr(
 def numpyro_lvgp(
     x,y,qual_index,quant_index,num_levels_per_var,jitter=1e-6,alpha=2.,beta=1.
 ):
-    mean = numpyro.sample('mean_module.constant',dist.Normal(0,1).expand([1]))
+    mean = numpyro.sample('mean_module.raw_constant',dist.Normal(0,1))
     outputscale = numpyro.sample("covar_module.raw_outputscale", dist.Normal(0.0, 1))
     noise = numpyro.sample(
         "likelihood.noise_covar.raw_noise",
@@ -319,7 +319,7 @@ def numpyro_fitc_lvgp(
     x,y,qual_index,quant_index,num_levels_per_var,
     quant_inducing,qual_weights,approx='FITC',jitter=1e-6
 ):
-    mean = numpyro.sample('mean_module.constant',dist.Normal(0,1).expand([1]))
+    mean = numpyro.sample('mean_module.raw_constant',dist.Normal(0,1))
     outputscale = numpyro.sample("covar_module.raw_outputscale", dist.Normal(0.0, 1))
     noise = numpyro.sample(
         "raw_noise",

@@ -69,7 +69,7 @@ class GPR(ExactGP):
             self.likelihood.raw_noise.requires_grad_(False)
         
         # Modules
-        self.mean_module = gpytorch.means.ConstantMean(prior=NormalPrior(0.,1.))
+        self.mean_module = gpytorch.means.ConstantMean(constant_prior=NormalPrior(0.,1.))
         if isinstance(correlation_kernel,str):
             try:
                 correlation_kernel_class = getattr(kernels,correlation_kernel)
