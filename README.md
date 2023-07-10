@@ -16,13 +16,13 @@ pip install <path>
 *Note*: `<path>` is optional.
 
 **Requirements**:
-- python >= 3.7
-- torch == 1.10.
-- gpytorch == 1.6.0
+- python >= 3.8
+- torch >= 1.13.
+- gpytorch >= 1.10.0
 - numpy >= 1.21
 - scipy >= 1.6
-- jax == 0.3.15
-- numpyro == 0.10
+- jax >= 0.3.15
+- numpyro >= 0.10
 
 ## Citing
 

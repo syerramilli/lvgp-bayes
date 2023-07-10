@@ -8,7 +8,7 @@ with open('requirements.txt') as fh:
     requirements = [line.strip() for line in fh.readlines()]
 
 setup(name='lvgp-bayes',
-      version='0.1.1',
+      version='0.2.0',
       description='LVGP models with bayesian inference',
       url='http://github.com/syerramilli/lvgp-bayes',
       author='Suraj Yerramilli',
