@@ -27,10 +27,14 @@ pip install <path>
 ## Citing
 
 ```
-@article{yerramilli2022fully,
-  title={Fully Bayesian inference for latent variable Gaussian process models},
+@article{yerramilli2023fully,
+  title={Fully Bayesian Inference for Latent Variable Gaussian Process Models},
   author={Yerramilli, Suraj and Iyer, Akshay and Chen, Wei and Apley, Daniel W},
-  journal={arXiv preprint arXiv:2211.02218},
-  year={2022}
+  journal={SIAM/ASA Journal on Uncertainty Quantification},
+  volume={11},
+  number={4},
+  pages={1357--1381},
+  year={2023},
+  publisher={SIAM}
 }
 ```
