@@ -62,7 +62,7 @@ def translate_and_rotate(Z):
     Zcen = Z-Z[...,[0],:]
     theta = jnp.arctan(Zcen[...,[1],[1]]/Zcen[...,[1],[0]])
     c,s = jnp.cos(theta),jnp.sin(theta)
-    R = jnp.row_stack([
+    R = jnp.vstack([
         jnp.column_stack([c,-s]),
         jnp.column_stack([s,c])
     ])
