@@ -1,5 +1,5 @@
-torch >= 2.2.0
+torch >= 2.3.0
 gpytorch >= 1.14
-numpy >= 2.00
+numpy >= 2.1.0
 scipy >= 1.10
 numpyro >= 0.19

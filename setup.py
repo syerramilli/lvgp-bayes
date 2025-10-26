@@ -17,9 +17,9 @@ setup(name='lvgp-bayes',
       author='Suraj Yerramilli',
       author_email='surajyerramilli@gmail.com',
       license='MIT',
-      packages=find_packages(exclude=["*.tests", "*.tests.*", "tests.*", "tests","notebooks"]),
+      packages=find_packages(exclude=["*.tests", "*.tests.*", "tests.*", "tests", "experiments/*", "notebooks"]),
       install_requires=requirements,
       extras_require={
-          'experiments': exp_requirements,
+          'experiments': exp_requirements
       },
       zip_safe=False)
