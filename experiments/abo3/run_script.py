@@ -8,7 +8,7 @@ import pandas as pd
 from joblib import dump,Parallel,delayed,load
 
 from lvgp_bayes.models.sparselvgp import SparseLVGPR
-from lvgp_bayes.optim.fitc_scipy import fit_fitc_model_scipy
+from lvgp_bayes.optim import fit_model_scipy
 from lvgp_bayes.optim.numpyro_hmc import run_hmc_numpyro
 from lvgp_bayes.utils.variables import CategoricalVariable
 from lvgp_bayes.utils.input_space import InputSpace
@@ -111,7 +111,7 @@ def main_script(seed):
 
     start_time = time.time()
     if args.approx == 'FITC':
-        _ = fit_fitc_model_scipy(model,num_restarts=9,options={'ftol':1e-6,'maxfun':1000})
+        _ = fit_model_scipy(model,num_restarts=9,options={'ftol':1e-6,'maxfun':1000})
     else:
         # VFE model is difficult to optimize
         # initialize from the FITC solution
@@ -127,10 +127,10 @@ def main_script(seed):
             approx='FITC',
             lb_noise=1e-4
         ).double()
-        _ = fit_fitc_model_scipy(model_fitc,num_restarts=9,options={'ftol':1e-6,'maxfun':1000})
+        _ = fit_model_scipy(model_fitc,num_restarts=9,options={'ftol':1e-6,'maxfun':1000})
 
         model.load_state_dict(deepcopy(model_fitc.state_dict()))
-        _ = fit_fitc_model_scipy(model,num_restarts=0,options={'ftol':1e-6,'maxfun':1000})
+        _ = fit_model_scipy(model,num_restarts=0,options={'ftol':1e-6,'maxfun':1000})
 
     fit_time_map = time.time() - start_time
 
