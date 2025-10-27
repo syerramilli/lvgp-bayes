@@ -27,12 +27,27 @@ from collections import OrderedDict
 from copy import deepcopy
 
 def cov_map(cov_func, xs, xs2=None):
-    """Compute a covariance matrix from a covariance function and data points.
+    """Compute covariance matrix using JAX vmap for efficient vectorization.
+
+    Applies a pairwise covariance function to compute the full covariance matrix
+    between data points. Uses JAX's vmap for automatic vectorization.
+
     Args:
-      cov_func: callable function, maps pairs of data points to scalars.
-      xs: array of data points, stacked along the leading dimension.
+        cov_func (callable): Covariance function that takes two data points and
+            returns a scalar covariance value.
+        xs (jax.numpy.ndarray): Array of data points with shape (n, d) where n is
+            the number of points and d is the dimensionality.
+        xs2 (jax.numpy.ndarray, optional): Second array of data points with shape
+            (m, d). If provided, computes cross-covariance matrix K(xs, xs2).
+            If None, computes K(xs, xs) (default).
+
     Returns:
-      A 2d array `a` such that `a[i, j] = cov_func(xs[i], xs[j])`.
+        jax.numpy.ndarray: Covariance matrix of shape (n, n) if xs2 is None,
+            or (n, m) if xs2 is provided, where element [i, j] equals
+            cov_func(xs[i], xs2[j]).
+
+    Note:
+        This is an internal helper function used by NumPyro model definitions.
     """
     if xs2 is None:
         return vmap(lambda x: vmap(lambda y: cov_func(x, y))(xs))(xs)
@@ -40,9 +55,43 @@ def cov_map(cov_func, xs, xs2=None):
         return vmap(lambda x: vmap(lambda y: cov_func(x, y))(xs))(xs2).T
     
 def rbfkernel(x1, x2):
+    """Radial Basis Function (RBF) / Squared Exponential kernel.
+
+    Computes the unnormalized RBF kernel between two input vectors.
+    The kernel is stationary and depends only on the Euclidean distance
+    between inputs: k(x1, x2) = exp(-0.5 * ||x1 - x2||^2).
+
+    Args:
+        x1 (jax.numpy.ndarray): First input vector of shape (d,).
+        x2 (jax.numpy.ndarray): Second input vector of shape (d,).
+
+    Returns:
+        float: Scalar kernel value between 0 and 1.
+
+    Note:
+        This kernel assumes inputs are already scaled by lengthscale.
+        For use with NumPyro models only.
+    """
     return jnp.exp(-0.5*jnp.sum((x1 - x2)**2))
 
-def matern52kernel(x1,x2):
+def matern52kernel(x1, x2):
+    """Matérn kernel with smoothness parameter ν = 5/2.
+
+    Computes the Matérn 5/2 kernel, which is twice differentiable.
+    The kernel has the form: k(r) = (1 + √5·r + 5·r²/3) · exp(-√5·r),
+    where r is the Euclidean distance between inputs.
+
+    Args:
+        x1 (jax.numpy.ndarray): First input vector of shape (d,).
+        x2 (jax.numpy.ndarray): Second input vector of shape (d,).
+
+    Returns:
+        float: Scalar kernel value. Approaches 1 as r → 0 and decays to 0 as r → ∞.
+
+    Note:
+        A small jitter (1e-12) is added for numerical stability when computing distance.
+        This kernel assumes inputs are already scaled by lengthscale.
+    """
     r = jnp.sqrt(jnp.sum((x1 - x2)**2) + 1e-12)
     exp_component = jnp.exp(-math.sqrt(5)*r)
     constant_component =1 + math.sqrt(5)*r + 5/3*(r**2)
@@ -56,9 +105,44 @@ kernel_names = {
 }
 
 def translate(Z):
+    """Translate latent variable embeddings to remove location invariance.
+
+    Centers the latent embeddings by subtracting the first embedding point,
+    ensuring the first point is at the origin.
+
+    Args:
+        Z (jax.numpy.ndarray): Latent embeddings with shape (n_levels, lv_dim).
+
+    Returns:
+        jax.numpy.ndarray: Translated embeddings with shape (n_levels, lv_dim)
+            where the first point is at the origin.
+
+    Note:
+        This is part of the identifiability constraints for latent variable mappings.
+    """
     return Z-Z[...,[0],:]
 
 def translate_and_rotate(Z):
+    """Apply translation and rotation to remove invariances in latent embeddings.
+
+    Removes both location and rotation invariance from 2D latent variable embeddings
+    by: (1) translating to place the first point at origin, and (2) rotating to
+    align the second point with a canonical orientation.
+
+    Args:
+        Z (jax.numpy.ndarray): Raw latent embeddings with shape (n_levels, 2).
+            Must be 2-dimensional (lv_dim=2).
+
+    Returns:
+        jax.numpy.ndarray: Transformed embeddings with shape (n_levels, 2) where:
+            - First point is at the origin
+            - Second point lies on a canonical axis (removes rotation)
+
+    Note:
+        This transformation ensures identifiability of the latent variable mapping
+        by removing degeneracies due to translation and rotation. Used in NumPyro
+        models for LVGP inference. Only works for 2D latent spaces.
+    """
     Zcen = Z-Z[...,[0],:]
     theta = jnp.arctan(Zcen[...,[1],[1]]/Zcen[...,[1],[0]])
     c,s = jnp.cos(theta),jnp.sin(theta)
@@ -69,43 +153,120 @@ def translate_and_rotate(Z):
     return Zcen @ R
 
 class ExpHalfCauchy(dist.TransformedDistribution):
-    def __init__(self,scale):
-        
+    """Exponentially transformed Half-Cauchy distribution.
+
+    Creates a distribution where X = log(Y) and Y ~ HalfCauchy(scale).
+    This is equivalent to applying the inverse exponential transform to a
+    Half-Cauchy distribution, useful for priors on log-scale parameters.
+
+    Args:
+        scale (float): Scale parameter for the base Half-Cauchy distribution.
+
+    Note:
+        Used as a prior for noise parameters in NumPyro GP models. The log
+        transformation ensures the parameter stays positive while allowing
+        wide tails for robust inference.
+    """
+    def __init__(self, scale):
         base_dist = dist.HalfCauchy(scale)
         super().__init__(
-            base_dist,dist.transforms.ExpTransform().inv
+            base_dist, dist.transforms.ExpTransform().inv
         )
 
-def get_samples(samples,num_samples=None, group_by_chain=False):
-    """
-    Get samples from the MCMC run
+def get_samples(samples, num_samples=None, group_by_chain=False):
+    """Thin MCMC samples to reduce storage requirements.
 
-    :param int num_samples: Number of samples to return. If `None`, all the samples
-        from an MCMC chain are returned in their original ordering.
-    :param bool group_by_chain: Whether to preserve the chain dimension. If True,
-        all samples will have num_chains as the size of their leading dimension.
-    :return: dictionary of samples keyed by site name.
+    Selects a subset of MCMC samples via systematic thinning (equally spaced indices).
+    This reduces autocorrelation and storage requirements while maintaining
+    representative posterior samples.
+
+    Args:
+        samples (dict): Dictionary of MCMC samples where keys are parameter names
+            and values are PyTorch tensors of shape (n_samples, ...).
+        num_samples (int, optional): Number of samples to retain after thinning.
+            If None, all samples are returned. Defaults to None.
+        group_by_chain (bool, optional): Whether to preserve chain dimension.
+            Currently unused but maintained for API compatibility. Defaults to False.
+
+    Returns:
+        dict: Dictionary of thinned samples with the same keys as input.
+            Each tensor has shape (num_samples, ...) if num_samples is specified,
+            otherwise unchanged.
+
+    Note:
+        Samples are selected in reverse order (most recent first) using linearly
+        spaced indices across the full sample range. This is an internal helper
+        for post-processing MCMC output.
     """
     if num_samples is not None:
         batch_dim = 0
         sample_tensor = list(samples.values())[0]
         batch_size, device = sample_tensor.shape[batch_dim], sample_tensor.device
-        idxs = torch.linspace(0,batch_size-1,num_samples,dtype=torch.long,device=device).flip(0)
+        idxs = torch.linspace(0, batch_size-1, num_samples, dtype=torch.long, device=device).flip(0)
         samples = {k: v.index_select(batch_dim, idxs) for k, v in samples.items()}
     return samples
 
 def run_hmc_numpyro(
     model,
-    num_samples:int=500,
-    warmup_steps:int=500,
-    num_model_samples:int=100,
-    disable_progbar:bool=True,
-    num_chains:int=1,
-    num_jobs:int=1,
-    max_tree_depth:int=5,
-    initialize_from_state:bool=False,
-    seed:int=0
+    num_samples: int = 500,
+    warmup_steps: int = 500,
+    num_model_samples: int = 100,
+    disable_progbar: bool = True,
+    num_chains: int = 1,
+    max_tree_depth: int = 5,
+    initialize_from_state: bool = False,
+    seed: int = 0
 ):
+    """Run fully Bayesian MCMC inference for Gaussian Process models using NumPyro.
+
+    Performs Hamiltonian Monte Carlo (HMC) inference using the No-U-Turn Sampler (NUTS)
+    to obtain posterior samples for GP hyperparameters. Automatically detects model type
+    and uses the appropriate NumPyro probabilistic program.
+
+    Supports three model types:
+        - Standard GP (GPR): Basic Gaussian Process regression
+        - Latent Variable GP (LVGPR): GP with categorical inputs via latent mappings
+        - Sparse LVGP (SparseLVGPR): LVGP with FITC/VFE approximations for scalability
+
+    Args:
+        model (GPR, LVGPR, or SparseLVGPR): A fitted GP model instance. The model's
+            current parameter values are used for initialization if
+            ``initialize_from_state=True``. Model type is auto-detected.
+        num_samples (int, optional): Number of MCMC samples to collect after warmup.
+            More samples improve posterior approximation but increase runtime.
+            Defaults to 500.
+        warmup_steps (int, optional): Number of warmup/adaptation steps for NUTS.
+            During warmup, step size and mass matrix are tuned. Defaults to 500.
+        num_model_samples (int, optional): Number of posterior samples to retain after
+            thinning. The final model will use this many posterior samples for
+            predictions. Should be less than ``num_samples``. Defaults to 100.
+        disable_progbar (bool, optional): If True, disables the progress bar during
+            sampling. Useful for cleaner output in scripts. Defaults to True.
+        num_chains (int, optional): Number of independent MCMC chains to run. Multiple
+            chains help diagnose convergence. Currently runs sequentially. Defaults to 1.
+        max_tree_depth (int, optional): Maximum tree depth for NUTS. Larger values allow
+            longer trajectories but increase computation. Defaults to 5.
+        initialize_from_state (bool, optional): If True, initializes MCMC from the
+            current model parameters. If False, samples initial values from priors.
+            Defaults to False.
+        seed (int, optional): Random seed for reproducibility. Defaults to 0.
+
+    Returns:
+        numpyro.infer.MCMC: MCMC run object containing the samples and diagnostics.
+            Use ``mcmc.get_samples()`` to access posterior samples, or
+            ``mcmc.print_summary()`` to see convergence diagnostics.
+
+    Note:
+        - It is recommend to configure JAX for 64-bit precision before calling this function:
+          ``jax.config.update("jax_enable_x64", True)``
+        - The input model is modified in-place with posterior samples loaded into
+          its state dict. After this call, the model can be used for Bayesian
+          predictions with uncertainty quantification.
+        - For convergence diagnostics, use ``numpyro.diagnostics.summary(mcmc.get_samples())``.
+
+    Raises:
+        ValueError: If model type is not supported (must be GPR, LVGPR, or SparseLVGPR).
+    """
     kwargs = {
         'x':jnp.array(model.train_inputs[0].numpy()),
         'y':jnp.array(model.train_targets.numpy()),
@@ -216,13 +377,35 @@ def run_hmc_numpyro(
     return mcmc_runs
 
 ########
-# Numpyro models
+# NumPyro Probabilistic Models
 ########
+# These functions define probabilistic programs for NumPyro's MCMC inference.
+# They specify the prior distributions and likelihood for different GP variants.
 
-## Regular GP with RBF kernel
 def numpyro_gpr(
-    x,y,kernel='rbfkernel',jitter=1e-6
+    x, y, kernel='rbfkernel', jitter=1e-6
 ):
+    """NumPyro probabilistic program for standard Gaussian Process regression.
+
+    Defines the Bayesian model for GP regression with RBF or Matérn kernel.
+    Specifies priors on hyperparameters and the GP likelihood.
+
+    Args:
+        x (jax.numpy.ndarray): Training inputs with shape (n, d).
+        y (jax.numpy.ndarray): Training targets with shape (n,).
+        kernel (str, optional): Kernel type, either 'rbfkernel' or 'matern52kernel'.
+            Defaults to 'rbfkernel'.
+        jitter (float, optional): Small positive value added to diagonal for numerical
+            stability. Defaults to 1e-6.
+
+    Note:
+        This is an internal function used by :func:`run_hmc_numpyro`.
+        Do not call directly. Prior specifications:
+            - mean: Normal(0, 1)
+            - outputscale (log): Normal(0, 1)
+            - noise (log): ExpHalfCauchy(1e-2)
+            - lengthscale (log): MollifiedUniform(log(0.1), log(10))
+    """
     mean = numpyro.sample('mean_module.raw_constant',dist.Normal(0,1))
     outputscale = numpyro.sample("covar_module.raw_outputscale", dist.Normal(0.0, 1))
     noise = numpyro.sample(
@@ -250,10 +433,37 @@ def numpyro_gpr(
         obs=y,
     )
 
-## LVGP model
 def numpyro_lvgp(
-    x,y,qual_index,quant_index,num_levels_per_var,jitter=1e-6,alpha=2.,beta=1.
+    x, y, qual_index, quant_index, num_levels_per_var,
+    jitter=1e-6, alpha=2., beta=1.
 ):
+    """NumPyro probabilistic program for Latent Variable Gaussian Process.
+
+    Defines the Bayesian model for LVGP with categorical inputs mapped to latent
+    space. Includes priors on latent embeddings, precision parameters, and GP
+    hyperparameters.
+
+    Args:
+        x (jax.numpy.ndarray): Training inputs with shape (n, d) where first columns
+            are categorical (qual_index) and remaining are quantitative (quant_index).
+        y (jax.numpy.ndarray): Training targets with shape (n,).
+        qual_index (list of int): Column indices for categorical variables.
+        quant_index (list of int): Column indices for quantitative variables.
+        num_levels_per_var (list of int): Number of levels for each categorical variable.
+        jitter (float, optional): Numerical stability constant. Defaults to 1e-6.
+        alpha (float, optional): Shape parameter for Gamma prior on precision.
+            Defaults to 2.0.
+        beta (float, optional): Rate parameter for Gamma prior on precision.
+            Defaults to 1.0.
+
+    Note:
+        This is an internal function used by :func:`run_hmc_numpyro`.
+        Do not call directly. Latent embeddings are constrained via
+        :func:`translate_and_rotate` to remove invariances. Prior specifications:
+            - Latent embeddings: Normal(0, 1) with precision scaling
+            - Precision (log): InverseGamma(alpha, beta) via log transform
+            - GP hyperparameters: Same as :func:`numpyro_gpr`
+    """
     mean = numpyro.sample('mean_module.raw_constant',dist.Normal(0,1))
     outputscale = numpyro.sample("covar_module.raw_outputscale", dist.Normal(0.0, 1))
     noise = numpyro.sample(
@@ -316,9 +526,37 @@ def numpyro_lvgp(
     )
 
 def numpyro_fitc_lvgp(
-    x,y,qual_index,quant_index,num_levels_per_var,
-    quant_inducing,qual_weights,approx='FITC',jitter=1e-6
+    x, y, qual_index, quant_index, num_levels_per_var,
+    quant_inducing, qual_weights, approx='FITC', jitter=1e-6
 ):
+    """NumPyro probabilistic program for Sparse Latent Variable GP (FITC/VFE).
+
+    Defines the Bayesian model for sparse LVGP using inducing point approximations.
+    Supports both FITC (Fully Independent Training Conditional) and VFE (Variational
+    Free Energy) approximations for scalability to large datasets.
+
+    Args:
+        x (jax.numpy.ndarray): Training inputs with shape (n, d).
+        y (jax.numpy.ndarray): Training targets with shape (n,).
+        qual_index (list of int): Column indices for categorical variables.
+        quant_index (list of int): Column indices for quantitative variables.
+        num_levels_per_var (list of int): Number of levels for each categorical variable.
+        quant_inducing (jax.numpy.ndarray): Inducing point locations for quantitative
+            inputs with shape (m, len(quant_index)).
+        qual_weights (list of jax.numpy.ndarray): Weights for categorical inducing points.
+            Each array has shape (m, num_levels) for that categorical variable.
+        approx (str, optional): Approximation type, either 'FITC' or 'VFE'.
+            Defaults to 'FITC'.
+        jitter (float, optional): Numerical stability constant. Defaults to 1e-6.
+
+    Note:
+        This is an internal function used by :func:`run_hmc_numpyro`.
+        Do not call directly. The sparse approximation uses a low-rank plus diagonal
+        covariance structure for efficient computation. For VFE, an additional
+        trace term is included via ``numpyro.factor``. Prior specifications:
+            - Same latent variable priors as :func:`numpyro_lvgp`
+            - Inducing point locations are fixed (not sampled)
+    """
     mean = numpyro.sample('mean_module.raw_constant',dist.Normal(0,1))
     outputscale = numpyro.sample("covar_module.raw_outputscale", dist.Normal(0.0, 1))
     noise = numpyro.sample(

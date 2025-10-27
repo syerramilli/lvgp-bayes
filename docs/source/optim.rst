@@ -3,26 +3,18 @@
 Optimization and Inference
 ===========================
 
-Methods for parameter estimation via MAP Estimation and fully Bayesian MCMC inference.
+Methods for parameter estimation via MAP estimation and fully Bayesian MCMC inference.
 
 
-MAP Estimatation
-----------------
-.. automodule:: lvgp_bayes.optim.mll_scipy
-   :members:
-   :undoc-members:
-   :show-inheritance:
+MAP Estimation with SciPy
+--------------------------
+
+.. autofunction:: lvgp_bayes.optim.fit_model_scipy
+
+.. autofunction:: lvgp_bayes.optim.mll_scipy.marginal_log_likelihood
 
 
-.. automodule:: lvgp_bayes.optim.fitc_scipy
-   :members:
-   :undoc-members:
-   :show-inheritance:
+Fully Bayesian Inference with NumPyro
+--------------------------------------
 
-NumPyro HMC/NUTS Inference
----------------------------
-
-.. automodule:: lvgp_bayes.optim.numpyro_hmc
-   :members:
-   :undoc-members:
-   :show-inheritance:
+.. autofunction:: lvgp_bayes.optim.run_hmc_numpyro
