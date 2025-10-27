@@ -12,6 +12,9 @@ with open('requirements.txt') as fh:
 with open('exp_requirements.txt') as f:
     exp_requirements = [line.strip() for line in f.readlines() if line.strip() and not line.startswith('#')]
 
+with open('docs/requirements.txt') as f:
+    docs_requirements = [line.strip() for line in f.readlines() if line.strip() and not line.startswith('#')]
+
 # Read long description from README
 with open('README.md', encoding='utf-8') as f:
     long_description = f.read()
@@ -37,6 +40,7 @@ setup(
     install_requires=requirements,
     extras_require={
         'experiments': exp_requirements,
+        'docs': docs_requirements,
     },
 
     # Classifiers
