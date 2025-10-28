@@ -68,10 +68,11 @@ Basic Usage
 -------------------------
 
 .. toctree::
-   :maxdepth: 2
+   :maxdepth: 1
    :caption: Examples:
 
-   examples/index
+   examples/M2AX_Shear_demo.ipynb
+   examples/ABO3_SparseLVGPR.ipynb
 
 .. toctree::
    :maxdepth: 2
