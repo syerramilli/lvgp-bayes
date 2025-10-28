@@ -3,18 +3,16 @@
 LVGP-Bayes Documentation
 ========================
 
-LVGP-Bayes is a Python library for estimating Latent Variable Gaussian Process (LVGP) models through fully Bayesian inference.
+LVGP-Bayes is a Python library for estimating Latent Variable Gaussian Process (LVGP) models through fully Bayesian inference. 
 
-This package implements methods from the paper `Fully Bayesian Inference for Latent Variable Gaussian Process Models <https://arxiv.org/abs/2211.02218>`_ published in SIAM/ASA Journal on Uncertainty Quantification (2023).
+This package implements methods from the paper `Fully Bayesian Inference for Latent Variable Gaussian Process Models <https://doi.org/10.1137/22M1525600>`_ published in the SIAM/ASA Journal on Uncertainty Quantification (2023).
 
 🚀 Key Features
 ---------------
 
 - **Latent Variable Gaussian Processes**: Handle mixed categorical and quantitative inputs
 - **Fully Bayesian Inference**: MCMC sampling using NumPyro with HMC/NUTS
-- **Maximum A Posteriori (MAP) Estimation**: Fast optimization using SciPy
 - **Sparse Approximations**: FITC and VFE methods for scalability
-- **Custom Kernels and Priors**: Specialized implementations for Bayesian GP models
 
 .. warning::
    **License**: This software is for **Academic and Non-Commercial Research Use Only**.
@@ -31,7 +29,7 @@ Installation
    cd lvgp-bayes
    pip install -e .
 
-For running experiments:
+For running the experiments:
 
 .. code-block:: bash
 
@@ -66,7 +64,6 @@ Basic Usage
        warmup_steps=1000
    )
 
-
 📚 Documentation Contents
 -------------------------
 
@@ -78,7 +75,7 @@ Basic Usage
 
 .. toctree::
    :maxdepth: 2
-   :caption: Contents:
+   :caption: API Reference:
 
    models
    optim
